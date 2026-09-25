@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta name="description" content="Votre portefeuille FlexiCash est ouvert dès l’inscription : cette page redirige vers votre tableau de bord ou vers votre demande en cours.">
+  <meta name="robots" content="noindex">
+  <title>Redirection — FlexiCash</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/css/reset.css">
+  <link rel="stylesheet" href="../assets/css/variables.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/auth.css">
+  <link rel="stylesheet" href="../assets/css/onboarding.css">
+<link rel="stylesheet" href="../assets/css/responsive.css">
+<link rel="stylesheet" href="../assets/css/brand-green.css">
+<script src="../assets/vendor/lucide/lucide-subset.js" defer></script>
+<link rel="stylesheet" href="../assets/css/ux-polish.css">
+</head>
+<body class="activation-page">
+  <div class="activation-shell">
+    <header class="activation-topbar">
+      <a href="../index.html" class="brand brand-wordmark" aria-label="FlexiCash"><span class="brand-flexi">Flexi</span><span class="brand-cash">Cash</span></a>
+      <div class="activation-top-actions">
+        <button type="button" class="btn btn-ghost sm" data-signout>Se déconnecter</button>
+      </div>
+    </header>
+
+    <main class="activation-layout">
+      <!-- Page de compatibilité : l'activation payante initiale n'existe plus.
+           Le portefeuille Mini est ouvert gratuitement dès l'inscription et le
+           routage réel vient de get_my_account_state(). -->
+      <section class="activation-workspace" id="activation-compat-panel">
+        <header class="activation-workspace-head">
+          <div>
+            <span>Portefeuille déjà ouvert</span>
+            <h1>Aucun paiement n’est nécessaire pour ouvrir votre portefeuille.</h1>
+            <p id="activation-compat-message">Redirection en cours vers votre espace FlexiCash…</p>
+          </div>
+          <span class="activation-secure-chip"><i data-lucide="shield-check" aria-hidden="true"></i> Compte sécurisé</span>
+        </header>
+
+        <div class="row gap-12 wrap mt-20" id="activation-compat-actions" hidden></div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="../assets/js/pages/activation-page.js"></script>
+</body>
+</html>
