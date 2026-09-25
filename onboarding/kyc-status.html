@@ -1,0 +1,32 @@
+<!doctype html><html lang="fr"><head>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Statut KYC — FlexiCash</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/reset.css"><link rel="stylesheet" href="../assets/css/variables.css">
+<link rel="stylesheet" href="../assets/css/components.css"><link rel="stylesheet" href="../assets/css/auth.css">
+<link rel="stylesheet" href="../assets/css/responsive.css">
+<link rel="stylesheet" href="../assets/css/brand-green.css">
+<script src="../assets/vendor/lucide/lucide-subset.js" defer></script>
+<link rel="stylesheet" href="../assets/css/ux-polish.css">
+</head><body>
+<div class="onb-shell">
+  <div class="onb-top"><a href="../index.html" class="brand brand-wordmark" aria-label="FlexiCash"><span class="brand-flexi">Flexi</span><span class="brand-cash">Cash</span></a><a href="../auth/login.html" class="btn-link" data-signout>Se déconnecter</a></div>
+  <div class="onb-body"><div class="onb-card center">
+    <div id="status-icon" style="width:64px;height:64px;border-radius:50%;display:grid;place-items:center;margin:0 auto 20px;font-size:1.6rem;background:var(--surface-2);">…</div>
+    <h1 class="onb-title" id="status-title">Chargement du dossier…</h1>
+    <p class="onb-sub" id="status-message">Nous vérifions le statut enregistré de votre compte.</p>
+    <div class="card mt-24" style="text-align:left;">
+      <div class="row between"><span class="muted">Statut du dossier</span><span class="badge badge-info" id="status-badge">Chargement</span></div>
+      <div class="row between mt-16" id="submitted-row" hidden><span class="muted">Soumis le</span><strong id="submitted-at">—</strong></div>
+      <div class="row between mt-16" id="reviewed-row" hidden><span class="muted">Décision le</span><strong id="reviewed-at">—</strong></div>
+      <div class="alert alert-info mt-16" id="review-note" hidden></div>
+    </div>
+    <div class="onb-actions" id="status-actions" style="justify-content:center;flex-wrap:wrap;">
+      <button type="button" class="btn btn-ghost" id="refresh-status">Actualiser le statut</button>
+    </div>
+    <p class="muted mt-16" style="font-size:.85rem;">Vous pouvez quitter le site. À votre prochaine connexion, FlexiCash vous ramènera directement à cette étape tant que la vérification est en attente.</p>
+  </div></div>
+</div>
+<script type="module" src="../assets/js/pages/kyc-status.js"></script></body></html>
