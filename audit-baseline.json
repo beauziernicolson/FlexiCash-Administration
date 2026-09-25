@@ -1,0 +1,12 @@
+{
+  "product": "FlexiCash",
+  "edition": "web-audit-mirror",
+  "source_repository": "beauziernicolson/Flexicash",
+  "source_commit": "2d60e810a452f830964457f67335966c8d1b05dd",
+  "parity_rule": "All web-runtime files and web backend/runtime contracts must match the source baseline. Differences are allowed only when they remove native/mobile-only code or non-versioned secrets without changing web behavior.",
+  "excluded_native_roots": ["android/", "ios/", "mobile/"],
+  "excluded_native_files": ["capacitor.config.json", "capacitor.config.ts", ".github/workflows/mobile-build.yml"],
+  "excluded_internal_tooling": [".claude/", "CLAUDE.md", ".mcp.json"],
+  "secrets_policy": "No runtime secret values are copied. Secret names/contracts may remain where required by runtime code and deployment configuration.",
+  "status": "migration-in-progress"
+}
