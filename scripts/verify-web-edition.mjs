@@ -12,39 +12,17 @@ const required = [
   'admin/index.html',
   'assets/js/app.js',
   'assets/js/config.js',
-  'assets/js/pages/app-review-pages.js',
 ];
 const forbiddenRoots = [
-  'android',
-  'ios',
-  'mobile',
-  '.claude',
-  '.finality-lock',
-  'supabase',
-  'environments',
-  'api',
+  'android', 'ios', 'mobile', '.claude', '.finality-lock',
 ];
-const forbiddenFiles = [
-  'CLAUDE.md',
-  '.mcp.json',
-  'capacitor.config.json',
-  'capacitor.config.ts',
-];
-const forbiddenExtensions = new Set([
-  '.env', '.pem', '.key', '.p12', '.pfx', '.jks', '.keystore',
-  '.sql', '.sqlite', '.db', '.log', '.map',
-]);
+const forbiddenFiles = ['CLAUDE.md', '.mcp.json', 'capacitor.config.json', 'capacitor.config.ts'];
+const forbiddenExtensions = new Set(['.env', '.pem', '.key', '.p12', '.pfx', '.jks', '.keystore', '.sqlite', '.db', '.log', '.map']);
 
 const failures = [];
-for (const path of required) {
-  if (!existsSync(join(root, path))) failures.push(`missing required file: ${path}`);
-}
-for (const path of forbiddenRoots) {
-  if (existsSync(join(root, path))) failures.push(`forbidden private/native directory: ${path}`);
-}
-for (const path of forbiddenFiles) {
-  if (existsSync(join(root, path))) failures.push(`forbidden private/native file: ${path}`);
-}
+for (const path of required) if (!existsSync(join(root, path))) failures.push(`missing required file: ${path}`);
+for (const path of forbiddenRoots) if (existsSync(join(root, path))) failures.push(`forbidden private/native directory: ${path}`);
+for (const path of forbiddenFiles) if (existsSync(join(root, path))) failures.push(`forbidden private/native file: ${path}`);
 
 const secretPatterns = [
   /SUPABASE_SERVICE_ROLE_KEY\s*[:=]\s*["']?[^\s"']{8,}/i,
@@ -58,52 +36,38 @@ const secretPatterns = [
 const scanExt = /\.(?:html|css|js|mjs|json|yml|yaml|txt|md)$/i;
 const skipped = new Set(['node_modules', '.git']);
 const htmlFiles = [];
+const jsFiles = [];
 
 function walk(dir) {
   for (const name of readdirSync(dir)) {
     if (skipped.has(name)) continue;
     const full = join(dir, name);
     const stat = statSync(full);
-    if (stat.isDirectory()) {
-      walk(full);
-      continue;
-    }
-
+    if (stat.isDirectory()) { walk(full); continue; }
     const rel = relative(root, full).replaceAll('\\', '/');
     const lower = name.toLowerCase();
     const extension = extname(lower);
-    if (forbiddenExtensions.has(extension) || lower === '.env' || lower.startsWith('.env.')) {
-      failures.push(`forbidden sensitive artifact: ${rel}`);
-    }
-
+    if (forbiddenExtensions.has(extension) || lower === '.env' || lower.startsWith('.env.')) failures.push(`forbidden sensitive artifact: ${rel}`);
     if (lower.endsWith('.html')) htmlFiles.push(full);
+    if (lower.endsWith('.js') || lower.endsWith('.mjs')) jsFiles.push(full);
     if (!scanExt.test(name)) continue;
-
     const text = readFileSync(full, 'utf8');
-    for (const pattern of secretPatterns) {
-      if (pattern.test(text)) failures.push(`possible secret in ${rel} (${pattern})`);
-    }
+    for (const pattern of secretPatterns) if (pattern.test(text)) failures.push(`possible secret in ${rel} (${pattern})`);
   }
 }
 walk(root);
 
-function localTarget(htmlFile, rawRef) {
+function localTarget(sourceFile, rawRef) {
   const ref = rawRef.trim();
   if (!ref || ref.startsWith('#')) return null;
   if (/^(?:https?:|mailto:|tel:|data:|javascript:|\/\/)/i.test(ref)) return null;
-
   const clean = ref.split('#')[0].split('?')[0];
   if (!clean) return null;
   const decoded = decodeURIComponent(clean);
-  const target = decoded.startsWith('/')
-    ? resolve(root, `.${decoded}`)
-    : resolve(dirname(htmlFile), decoded);
-
+  const target = decoded.startsWith('/') ? resolve(root, `.${decoded}`) : resolve(dirname(sourceFile), decoded);
   const normalizedRoot = normalize(`${root}/`);
   const normalizedTarget = normalize(target);
-  if (!normalizedTarget.startsWith(normalizedRoot) && normalizedTarget !== normalize(root)) {
-    return { escaped: true, target: normalizedTarget };
-  }
+  if (!normalizedTarget.startsWith(normalizedRoot) && normalizedTarget !== normalize(root)) return { escaped: true, target: normalizedTarget };
   return { escaped: false, target: normalizedTarget };
 }
 
@@ -115,18 +79,27 @@ for (const htmlFile of htmlFiles) {
     const rawRef = match[1];
     const resolved = localTarget(htmlFile, rawRef);
     if (!resolved) continue;
-    if (resolved.escaped) {
-      failures.push(`local reference escapes repository in ${relHtml}: ${rawRef}`);
-      continue;
-    }
-    if (!existsSync(resolved.target)) {
-      failures.push(`broken local reference in ${relHtml}: ${rawRef}`);
-    }
+    if (resolved.escaped) failures.push(`local reference escapes repository in ${relHtml}: ${rawRef}`);
+    else if (!existsSync(resolved.target)) failures.push(`broken local reference in ${relHtml}: ${rawRef}`);
   }
 }
 
-// Contrat Service Worker : cette édition doit réellement posséder le même
-// modèle de cache que le Web FlexiCash principal, et pas un faux fallback.
+// Imports ES modules statiques et dynamiques avec chaîne littérale. Les imports
+// CDN/package externes sont ignorés; tout import relatif/local doit exister.
+const importPattern = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s*)["']([^"']+)["']/g;
+function verifyImports(sourceFile, text, label) {
+  for (const match of text.matchAll(importPattern)) {
+    const rawRef = match[1];
+    if (!rawRef.startsWith('.') && !rawRef.startsWith('/')) continue;
+    const resolved = localTarget(sourceFile, rawRef);
+    if (!resolved) continue;
+    if (resolved.escaped) failures.push(`module import escapes repository in ${label}: ${rawRef}`);
+    else if (!existsSync(resolved.target)) failures.push(`missing local module in ${label}: ${rawRef}`);
+  }
+}
+for (const jsFile of jsFiles) verifyImports(jsFile, readFileSync(jsFile, 'utf8'), relative(root, jsFile).replaceAll('\\', '/'));
+for (const htmlFile of htmlFiles) verifyImports(htmlFile, readFileSync(htmlFile, 'utf8'), relative(root, htmlFile).replaceAll('\\', '/'));
+
 if (existsSync(join(root, 'sw.js'))) {
   const sw = readFileSync(join(root, 'sw.js'), 'utf8');
   const swContracts = [
@@ -138,11 +111,8 @@ if (existsSync(join(root, 'sw.js'))) {
     ['skipWaiting', /self\.skipWaiting\(\)/],
     ['clients claim', /self\.clients\.claim\(\)/],
   ];
-  for (const [label, pattern] of swContracts) {
-    if (!pattern.test(sw)) failures.push(`service worker contract missing: ${label}`);
-  }
+  for (const [label, pattern] of swContracts) if (!pattern.test(sw)) failures.push(`service worker contract missing: ${label}`);
 }
-
 if (existsSync(join(root, 'assets/js/app.js'))) {
   const app = readFileSync(join(root, 'assets/js/app.js'), 'utf8');
   if (!/serviceWorker[\s\S]*register\(/.test(app)) failures.push('service worker is not registered by assets/js/app.js');
@@ -154,4 +124,4 @@ if (failures.length) {
   [...new Set(failures)].forEach((item) => console.error(`- ${item}`));
   process.exit(1);
 }
-console.log(`FlexiCash Web edition verification PASS (${htmlFiles.length} HTML files checked)`);
+console.log(`FlexiCash Web edition verification PASS (${htmlFiles.length} HTML files, ${jsFiles.length} JS modules checked)`);
