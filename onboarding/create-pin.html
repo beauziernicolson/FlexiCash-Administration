@@ -1,0 +1,122 @@
+<!doctype html><html lang="fr"><head>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Créer votre PIN — FlexiCash</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/reset.css"><link rel="stylesheet" href="../assets/css/variables.css">
+<link rel="stylesheet" href="../assets/css/components.css"><link rel="stylesheet" href="../assets/css/auth.css">
+<link rel="stylesheet" href="../assets/css/responsive.css">
+<link rel="stylesheet" href="../assets/css/brand-green.css">
+<script src="../assets/vendor/lucide/lucide-subset.js" defer></script>
+<link rel="stylesheet" href="../assets/css/ux-polish.css">
+</head><body>
+<div class="onb-shell"><div class="onb-top"><a href="../index.html" class="brand brand-wordmark" aria-label="FlexiCash"><span class="brand-flexi">Flexi</span><span class="brand-cash">Cash</span></a><a href="../auth/login.html" class="btn-link" data-signout>Se déconnecter</a></div>
+<div class="onb-body"><div class="onb-card">
+  <span class="badge badge-info">Sécurité du compte</span>
+  <h1 class="onb-title mt-16">Créez votre PIN à 4 chiffres</h1>
+  <p class="onb-sub">Ce code confirme les opérations sensibles comme les transferts, retraits et mouvements d’épargne. Il est différent de votre mot de passe et ne doit être communiqué à personne.</p>
+
+  <div class="card mt-24 center">
+    <div class="pin" id="pin-digits">
+      <input class="input" data-pin-digit maxlength="1" type="password" inputmode="numeric" autocomplete="new-password" aria-label="Premier chiffre du PIN">
+      <input class="input" data-pin-digit maxlength="1" type="password" inputmode="numeric" autocomplete="new-password" aria-label="Deuxième chiffre du PIN">
+      <input class="input" data-pin-digit maxlength="1" type="password" inputmode="numeric" autocomplete="new-password" aria-label="Troisième chiffre du PIN">
+      <input class="input" data-pin-digit maxlength="1" type="password" inputmode="numeric" autocomplete="new-password" aria-label="Quatrième chiffre du PIN">
+    </div>
+    <div class="keypad" aria-label="Clavier numérique">
+      <button type="button">1</button><button type="button">2</button><button type="button">3</button>
+      <button type="button">4</button><button type="button">5</button><button type="button">6</button>
+      <button type="button">7</button><button type="button">8</button><button type="button">9</button>
+      <span></span><button type="button">0</button><button type="button">⌫</button>
+    </div>
+    <p class="muted mt-16">Les répétitions et suites comme 0000, 1234 ou 4321 sont refusées.</p>
+  </div>
+  <div class="onb-actions"><a href="../app/security.html" class="btn btn-ghost"><i data-lucide="arrow-left" aria-hidden="true"></i> Retour à la sécurité</a><button type="button" id="save-pin" class="btn btn-primary">Enregistrer mon PIN <i data-lucide="arrow-right" aria-hidden="true"></i></button></div>
+</div></div></div>
+<script type="module">
+import "../assets/js/app.js";
+import { toast } from "../assets/js/components.js";
+import { securityService } from "../assets/js/services/security-service.js";
+import { getMyAccountState, redirectForAccountState } from "../assets/js/services/account-state-service.js";
+
+const pinInputs = [...document.querySelectorAll("[data-pin-digit]")];
+const savePinButton = document.getElementById("save-pin");
+let cursor = 0;
+
+function pinValue() {
+  return pinInputs.map((input) => input.value.replace(/\D/g, "")).join("");
+}
+function focusCursor() {
+  pinInputs[Math.min(cursor, pinInputs.length - 1)]?.focus();
+}
+function setDigit(value) {
+  if (cursor >= pinInputs.length) return;
+  pinInputs[cursor].value = value;
+  cursor += 1;
+  focusCursor();
+}
+function backspace() {
+  if (cursor > 0 && !pinInputs[cursor]?.value) cursor -= 1;
+  pinInputs[Math.max(0, cursor)].value = "";
+  focusCursor();
+}
+
+pinInputs.forEach((input, index) => {
+  input.addEventListener("input", () => {
+    input.value = input.value.replace(/\D/g, "").slice(-1);
+    cursor = input.value ? Math.min(index + 1, pinInputs.length) : index;
+    focusCursor();
+  });
+  input.addEventListener("focus", () => { cursor = index; });
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Backspace") {
+      event.preventDefault();
+      cursor = index;
+      backspace();
+    }
+  });
+});
+
+document.querySelectorAll(".keypad button").forEach((button) => button.addEventListener("click", () => {
+  if (button.textContent === "⌫") backspace();
+  else setDigit(button.textContent);
+}));
+
+savePinButton.addEventListener("click", async () => {
+  const pin = pinValue();
+  if (securityService.isWeakPin(pin)) {
+    toast({ type: "error", title: "Choisissez un PIN plus sûr", message: "Utilisez exactement 4 chiffres non répétés et non séquentiels." });
+    return;
+  }
+
+  savePinButton.disabled = true;
+  const result = await securityService.setPin(pin);
+  if (!result.ok && result.errorCode !== "pin_already_set") {
+    savePinButton.disabled = false;
+    toast({ type: "error", title: "PIN non enregistré", message: result.error });
+    return;
+  }
+
+  const state = await getMyAccountState();
+  const redirected = await redirectForAccountState(state);
+  if (!redirected.ok) {
+    savePinButton.disabled = false;
+    toast({ type: "error", title: "Étape suivante indisponible", message: "Rechargez la page et réessayez." });
+  }
+});
+
+// Un compte qui possède déjà un PIN est renvoyé vers sa route serveur réelle.
+// Le PIN renforce les opérations sensibles mais ne remplace pas l’activation du wallet.
+// get_my_account_state() n'a pas d'état "pin_required" dédié (state reste "ready"
+// une fois le profil/wallet prêts, PIN ou pas) : c'est le champ pin_is_set, lui
+// toujours renseigné correctement, qui indique si un PIN existe déjà.
+(async () => {
+  const state = await getMyAccountState();
+  if (state.state === "ok" && state.data?.pin_is_set) {
+    await redirectForAccountState(state);
+  } else {
+    focusCursor();
+  }
+})();
+</script></body></html>
