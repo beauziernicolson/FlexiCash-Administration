@@ -1,0 +1,106 @@
+<!doctype html><html lang="fr"><head>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Profil — FlexiCash</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/reset.css"><link rel="stylesheet" href="../assets/css/variables.css">
+<link rel="stylesheet" href="../assets/css/components.css"><link rel="stylesheet" href="../assets/css/auth.css">
+<link rel="stylesheet" href="../assets/css/responsive.css">
+<link rel="stylesheet" href="../assets/css/brand-green.css">
+<script src="../assets/vendor/lucide/lucide-subset.js" defer></script>
+<link rel="stylesheet" href="../assets/css/ux-polish.css">
+</head><body>
+<div class="onb-shell">
+<div class="onb-top"><a href="../index.html" class="brand brand-wordmark" aria-label="FlexiCash"><span class="brand-flexi">Flexi</span><span class="brand-cash">Cash</span></a><a href="../auth/login.html" class="btn-link" data-signout>Se déconnecter</a></div>
+<div class="onb-body"><div class="onb-card">
+  <div class="flow-progress" aria-label="Progression de l’ouverture du compte">
+    <div class="flow-progress-item is-done"><span>✓</span><div><strong>Compte créé</strong><small>Votre accès est sécurisé.</small></div></div>
+    <div class="flow-progress-item is-current"><span>2</span><div><strong>Profil</strong><small>Confirmez vos coordonnées.</small></div></div>
+    <div class="flow-progress-item"><span>3</span><div><strong>Mini Wallet</strong><small>Ouvert gratuitement.</small></div></div>
+  </div>
+  <h1 class="onb-title mt-24">Confirmez vos informations</h1>
+  <p class="onb-sub">Ces données identifient votre profil personnel et permettent de vous contacter en cas de problème. Vous pourrez les modifier plus tard depuis votre profil.</p>
+  <form class="card mt-24 stack" style="--gap:14px;" id="f">
+    <div class="field"><label for="onb-full-name">Nom complet</label><input class="input" id="onb-full-name" name="full_name" autocomplete="name" placeholder="Votre prénom et votre nom" required/></div>
+    <div class="field"><label for="onb-phone">Numéro de téléphone</label><input class="input" id="onb-phone" name="phone" type="tel" autocomplete="tel" required placeholder="Ex. : +509 3366 9256"/><small class="muted">Utilisez un numéro auquel vous avez accès.</small></div>
+    <div class="onb-actions"><span></span><button class="btn btn-primary" type="submit">Continuer <i data-lucide="arrow-right" aria-hidden="true"></i></button></div>
+  </form>
+</div></div></div>
+<script type="module">
+import "../assets/js/app.js";
+import { toast } from "../assets/js/components.js";
+import { refreshLucideIcons } from "../assets/js/services/lucide-service.js";
+import { profileService } from "../assets/js/services/profile-service.js";
+import { getMyAccountState, redirectForAccountState } from "../assets/js/services/account-state-service.js";
+
+const form = document.getElementById("f");
+const submitBtn = form.querySelector("button[type=submit]");
+let submitting = false;
+
+const normalize = (value) => String(value || "").trim();
+
+function validate(values) {
+  if (values.full_name.length < 2 || values.full_name.length > 120) return "Le nom complet doit contenir entre 2 et 120 caractères.";
+  if (!/^[+0-9 ()-]{8,20}$/.test(values.phone)) return "Le numéro de téléphone est invalide.";
+  return "";
+}
+
+async function loadProfile() {
+  submitBtn.disabled = true;
+  const result = await profileService.fetch();
+  submitBtn.disabled = false;
+  if (result.state !== "ok") {
+    toast({ type: "error", title: "Impossible de charger le profil", message: "Vérifiez votre connexion ou reconnectez-vous." });
+    return;
+  }
+  const profile = result.data;
+  form.elements.full_name.value = profile.fullName || "";
+  form.elements.phone.value = profile.phone || "";
+}
+
+form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (submitting) return;
+
+  const values = {
+    full_name: normalize(form.elements.full_name.value),
+    phone: normalize(form.elements.phone.value),
+  };
+  const validationError = validate(values);
+  if (validationError) {
+    toast({ type: "error", title: "Formulaire invalide", message: validationError });
+    return;
+  }
+
+  submitting = true;
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Enregistrement…";
+
+  const saved = await profileService.saveBasicOnboardingProfile({
+    fullName: values.full_name,
+    phone: values.phone,
+  });
+  if (!saved.ok) {
+    submitting = false;
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = 'Continuer <i data-lucide="arrow-right" aria-hidden="true"></i>';
+    refreshLucideIcons(submitBtn);
+    toast({ type: "error", title: "Impossible d’enregistrer", message: saved.error || "Réessayez plus tard." });
+    return;
+  }
+
+  toast({ type: "success", title: "Profil enregistré", message: "Ces informations ne vous seront plus redemandées." });
+  const accountState = await getMyAccountState();
+  const redirect = await redirectForAccountState(accountState);
+  if (!redirect.ok) {
+    submitting = false;
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = 'Continuer <i data-lucide="arrow-right" aria-hidden="true"></i>';
+    refreshLucideIcons(submitBtn);
+    toast({ type: "error", title: "Étape suivante indisponible", message: "Rechargez la page et réessayez." });
+  }
+});
+
+loadProfile();
+</script></body></html>
