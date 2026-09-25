@@ -5,9 +5,12 @@ const root = process.cwd();
 const required = [
   'README.md',
   'index.html',
+  'offline.html',
+  'sw.js',
   'auth/login.html',
   'app/dashboard.html',
   'admin/index.html',
+  'assets/js/app.js',
   'assets/js/config.js',
   'assets/js/pages/app-review-pages.js',
 ];
@@ -120,6 +123,30 @@ for (const htmlFile of htmlFiles) {
       failures.push(`broken local reference in ${relHtml}: ${rawRef}`);
     }
   }
+}
+
+// Contrat Service Worker : cette édition doit réellement posséder le même
+// modèle de cache que le Web FlexiCash principal, et pas un faux fallback.
+if (existsSync(join(root, 'sw.js'))) {
+  const sw = readFileSync(join(root, 'sw.js'), 'utf8');
+  const swContracts = [
+    ['cache production baseline', /flexicash-runtime-v140-hosted-return-bfcache/],
+    ['offline fallback', /cache\.match\(["']\/offline\.html["']\)/],
+    ['OAuth callback no-store', /auth\/callback\.html[\s\S]*cache:\s*["']no-store["']/],
+    ['network-first navigations', /event\.request\.mode\s*===\s*["']navigate["']/],
+    ['old FlexiCash cache purge', /key\.startsWith\(["']flexicash-runtime-["']\)/],
+    ['skipWaiting', /self\.skipWaiting\(\)/],
+    ['clients claim', /self\.clients\.claim\(\)/],
+  ];
+  for (const [label, pattern] of swContracts) {
+    if (!pattern.test(sw)) failures.push(`service worker contract missing: ${label}`);
+  }
+}
+
+if (existsSync(join(root, 'assets/js/app.js'))) {
+  const app = readFileSync(join(root, 'assets/js/app.js'), 'utf8');
+  if (!/serviceWorker[\s\S]*register\(/.test(app)) failures.push('service worker is not registered by assets/js/app.js');
+  if (!/updateViaCache:\s*["']none["']/.test(app)) failures.push('service worker registration must use updateViaCache:none');
 }
 
 if (failures.length) {
