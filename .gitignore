@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local tooling
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# AI / agent workspaces
+.claude/
+CLAUDE.md
+.mcp.json
+AGENTS.md
+.copilot/
+
+# Mobile / native artifacts — intentionally out of scope
+android/
+ios/
+mobile/
+www/
+capacitor.config.*
+
+# Temporary / generated files
+*.log
+*.tmp
+*.bak
+coverage/
+dist/
+build/
+.cache/
+
+# Local Supabase state
+supabase/.temp/
+.supabase/

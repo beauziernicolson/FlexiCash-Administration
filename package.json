@@ -1,0 +1,14 @@
+{
+  "name": "flexicash-web-administration",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "FlexiCash Web — administrative review edition",
+  "scripts": {
+    "verify": "node scripts/verify-web-edition.mjs",
+    "test": "npm run verify"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
