@@ -1,0 +1,22 @@
+<!doctype html><html lang="fr"><head>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Redirection — FlexiCash</title>
+<link rel="stylesheet" href="../assets/css/reset.css"><link rel="stylesheet" href="../assets/css/variables.css"><link rel="stylesheet" href="../assets/css/components.css"><link rel="stylesheet" href="../assets/css/auth.css">
+<link rel="stylesheet" href="../assets/css/responsive.css">
+<link rel="stylesheet" href="../assets/css/brand-green.css">
+<script src="../assets/vendor/lucide/lucide-subset.js" defer></script>
+<link rel="stylesheet" href="../assets/css/ux-polish.css">
+</head><body><div class="onb-shell"><div class="onb-body"><div class="onb-card center">
+<a href="../index.html" class="brand brand-wordmark" aria-label="FlexiCash"><span class="brand-flexi">Flexi</span><span class="brand-cash">Cash</span></a>
+<h1 class="onb-title mt-24">Reprise de votre inscription…</h1>
+<p class="onb-sub">La vérification SMS n’est plus une étape obligatoire. Nous vous envoyons vers votre prochaine étape enregistrée.</p>
+</div></div></div>
+<script type="module">
+import "../assets/js/app.js";
+import { getMyAccountState, redirectForAccountState } from "../assets/js/services/account-state-service.js";
+const state = await getMyAccountState();
+const result = await redirectForAccountState(state);
+if (!result.ok) location.replace("../auth/login.html");
+</script></body></html>
