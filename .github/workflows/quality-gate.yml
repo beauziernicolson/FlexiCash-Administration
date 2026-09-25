@@ -1,16 +1,19 @@
-name: Web Administrative Quality Gate
+name: FlexiCash Web Audit Mirror Gate
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - audit/web-mirror-2d60e810
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  verify-web-edition:
+  verify-web-mirror:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -19,5 +22,5 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Verify clean Web-only edition
+      - name: Verify complete Web mirror
         run: npm test
