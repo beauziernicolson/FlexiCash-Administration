@@ -1,1 +1,431 @@
-<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Retour de paiement — FlexiCash</title><link rel="stylesheet" href="../assets/css/reset.css"><link rel="stylesheet" href="../assets/css/variables.css"><link rel="stylesheet" href="../assets/css/components.css"><link rel="stylesheet" href="../assets/css/global.css"></head><body><main class="container section"><div class="card"><span class="badge badge-info">Vérification en cours</span><h1 class="mt-16">Retour de paiement</h1><p class="muted">Le retour du navigateur n’est jamais considéré comme une preuve de règlement. FlexiCash relit le statut serveur/provider avant d’afficher un résultat définitif.</p><a class="btn btn-primary mt-16" href="../app/dashboard.html">Retour au compte</a></div></main></body></html>
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <link rel="icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta name="description" content="Confirmation sécurisée d’un paiement FlexiCash.">
+  <title>Confirmation du paiement — FlexiCash</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/css/reset.css">
+  <link rel="stylesheet" href="../assets/css/variables.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/responsive.css">
+  <link rel="stylesheet" href="../assets/css/brand-green.css">
+  <script src="../assets/vendor/lucide/lucide-subset.js" defer></script>
+  <link rel="stylesheet" href="../assets/css/ux-polish.css">
+  <style>
+    body{min-height:100vh;background:linear-gradient(145deg,var(--surface-soft),var(--bg));display:grid;place-items:center;padding:24px}
+    .pr-card{width:min(100%,560px);background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:clamp(24px,5vw,44px);box-shadow:var(--shadow-lg);text-align:center}
+    .pr-header{display:flex;flex-direction:column;align-items:center;gap:16px;margin-bottom:26px}
+    .pr-brand{display:inline-flex;text-decoration:none}
+    .pr-brand-logo{height:40px;width:40px;object-fit:contain;border-radius:11px;display:block}
+    .pr-provider{display:inline-flex;align-items:center;gap:7px;padding:6px 14px;border-radius:999px;background:var(--surface-soft);border:1px solid var(--border);color:var(--text-muted);font-size:.78rem;font-weight:600;line-height:1}
+    .pr-provider .pr-provider-prefix{font-weight:500}
+    .pr-provider strong{color:var(--text);font-weight:700}
+    .pr-provider img{width:14px;height:14px;border-radius:3px;object-fit:contain;background:#fff}
+    .pr-provider svg{width:14px;height:14px}
+    .pr-icon{width:72px;height:72px;border-radius:24px;display:grid;place-items:center;margin:0 auto 22px;background:var(--primary-soft);color:var(--primary)}
+    .pr-icon svg{width:34px;height:34px}
+    .pr-icon.tone-success{background:var(--electric-100);color:var(--electric-600)}
+    .pr-icon.tone-warning{background:var(--amber-100);color:#92400E}
+    .pr-icon.tone-danger{background:var(--red-100);color:var(--red-500)}
+    .pr-icon.tone-info{background:var(--electric-100);color:var(--electric-600)}
+    .pr-icon .spinner{margin:0}
+    .pr-card h1{font-size:clamp(1.5rem,4vw,2.05rem);margin-bottom:10px}
+    .pr-card p{color:var(--text-muted);line-height:1.7}
+    .pr-amount{font-family:var(--font-display);font-size:clamp(1.6rem,5vw,2.1rem);font-weight:800;color:var(--text);margin:18px 0 4px}
+    .pr-status-box{margin:22px 0;text-align:left;padding:14px 16px;border-radius:14px;border:1px solid var(--border);background:var(--surface-soft);color:var(--text-muted);font-size:.92rem;line-height:1.6}
+    .pr-status-box.tone-success{background:var(--electric-100);border-color:transparent;color:var(--electric-600)}
+    .pr-status-box.tone-warning{background:var(--amber-100);border-color:transparent;color:#92400E}
+    .pr-status-box.tone-danger{background:var(--red-100);border-color:transparent;color:var(--red-500)}
+    .pr-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:8px}
+    .pr-meta{margin-top:18px;font-size:.8rem;color:var(--text-muted)}
+    .pr-ref{font-family:ui-monospace,"JetBrains Mono",monospace;font-size:.78rem;word-break:break-all}
+  </style>
+</head>
+<body>
+  <main class="pr-card" aria-live="polite">
+    <div class="pr-header">
+      <a class="pr-brand" href="../index.html" aria-label="FlexiCash">
+        <img class="pr-brand-logo" src="../images/flexilogo.jpeg" alt="FlexiCash">
+      </a>
+      <div class="pr-provider" id="pr-provider" hidden></div>
+    </div>
+    <div class="pr-icon tone-info" id="pr-icon"><span class="spinner"></span></div>
+    <h1 id="pr-title">Vérification de votre paiement…</h1>
+    <p id="pr-description">FlexiCash vérifie votre paiement directement auprès du système sécurisé. Ne fermez pas cette page.</p>
+    <div class="pr-amount" id="pr-amount" hidden></div>
+    <div class="pr-status-box tone-info" id="pr-status">Vérification en cours…</div>
+    <div class="pr-actions" id="pr-actions" hidden></div>
+    <p class="pr-meta" id="pr-meta" hidden></p>
+  </main>
+
+  <script type="module">
+    import "../assets/js/theme.js";
+    import { getSupabase } from "../assets/js/services/supabase-client.js";
+    import { fmtMoney } from "../assets/js/formatters.js";
+    import { escapeHtml } from "../assets/js/components.js";
+    import { refreshLucideIcons } from "../assets/js/services/lucide-service.js";
+    import { fundingService, providerLabel } from "../assets/js/services/funding-service.js?v=20260921-funding-cancel-v137";
+    import {
+      paymentReturnService,
+      isValidOperationId,
+      isKnownProvider,
+      normalizeReturnSignal,
+    } from "../assets/js/services/payment-return-service.js?v=20260921-funding-cancel-v137";
+
+    // ------------------------------------------------------------------
+    // Présentation par provider (icône/logo uniquement — aucune logique métier).
+    // ------------------------------------------------------------------
+    const PROVIDER_ICON = Object.freeze({
+      paypal: "credit-card",
+      stripe: "credit-card",
+      moncash: "smartphone",
+      natcash_manual: "smartphone",
+      moncash_manual: "smartphone",
+      paypal_manual: "credit-card",
+      bank_transfer_manual: "landmark",
+    });
+    const PROVIDER_IMAGE = Object.freeze({
+      stripe: "../images/stripes.png",
+      paypal: "../images/paypal.png",
+      paypal_manual: "../images/paypal.png",
+      moncash: "../images/moncash.png",
+      moncash_manual: "../images/moncash.png",
+      natcash_manual: "../images/natcash.jpg",
+      bank_transfer_manual: "../images/virement.jpg",
+    });
+
+    const els = {
+      provider: document.getElementById("pr-provider"),
+      icon: document.getElementById("pr-icon"),
+      title: document.getElementById("pr-title"),
+      description: document.getElementById("pr-description"),
+      amount: document.getElementById("pr-amount"),
+      status: document.getElementById("pr-status"),
+      actions: document.getElementById("pr-actions"),
+      meta: document.getElementById("pr-meta"),
+    };
+
+    const MAX_PARAM_LEN = 200;
+    function readParam(params, key) {
+      return String(params.get(key) || "").trim().slice(0, MAX_PARAM_LEN);
+    }
+
+    const params = new URLSearchParams(location.search);
+    const rawProvider = readParam(params, "provider").toLowerCase();
+    const provider = isKnownProvider(rawProvider) ? rawProvider : "";
+    const rawOperation = readParam(params, "operation");
+    const operationId = isValidOperationId(rawOperation) ? rawOperation : "";
+    const urlReference = readParam(params, "reference");
+    const storedMoncashReference = rawProvider === "moncash"
+      ? String(sessionStorage.getItem("fx.moncash.deposit.reference") || "").trim().slice(0, MAX_PARAM_LEN)
+      : "";
+    const reference = urlReference || storedMoncashReference;
+    const resultSignal = normalizeReturnSignal(readParam(params, "result"));
+
+    function setIcon(tone, name, spinning = false) {
+      els.icon.className = `pr-icon tone-${tone}`;
+      els.icon.innerHTML = spinning ? '<span class="spinner"></span>' : `<i data-lucide="${name}" aria-hidden="true"></i>`;
+      refreshLucideIcons(els.icon);
+    }
+
+    function setStatusBox(tone, text) {
+      els.status.className = `pr-status-box tone-${tone}`;
+      els.status.textContent = text;
+    }
+
+    function setActions(buttons) {
+      if (!buttons || !buttons.length) { els.actions.hidden = true; els.actions.innerHTML = ""; return; }
+      els.actions.hidden = false;
+      els.actions.innerHTML = buttons
+        .map((btn) => btn.href
+          ? `<a class="btn ${btn.primary ? "btn-primary" : "btn-ghost"}" href="${btn.href}">${escapeHtml(btn.label)}</a>`
+          : `<button type="button" class="btn ${btn.primary ? "btn-primary" : "btn-ghost"}" id="${btn.id}">${escapeHtml(btn.label)}</button>`)
+        .join("");
+    }
+
+    function showProviderBadge() {
+      if (!provider) { els.provider.hidden = true; return; }
+      els.provider.hidden = false;
+      const image = PROVIDER_IMAGE[provider];
+      const mark = image
+        ? `<img src="${escapeHtml(image)}" alt="">`
+        : `<i data-lucide="${PROVIDER_ICON[provider] || "wallet"}" aria-hidden="true"></i>`;
+      const prefix = provider.endsWith("_manual") ? "Dépôt via" : "Paiement via";
+      els.provider.innerHTML = `<span class="pr-provider-prefix">${escapeHtml(prefix)}</span>${mark}<strong>${escapeHtml(providerLabel(provider))}</strong>`;
+      refreshLucideIcons(els.provider);
+    }
+    showProviderBadge();
+
+    function showAmount(amount, currency) {
+      if (amount == null) { els.amount.hidden = true; return; }
+      els.amount.hidden = false;
+      els.amount.textContent = fmtMoney(amount, currency);
+    }
+
+    function showMeta(reference) {
+      if (!reference) { els.meta.hidden = true; return; }
+      els.meta.hidden = false;
+      els.meta.innerHTML = `Référence : <span class="pr-ref">${escapeHtml(reference)}</span>`;
+    }
+
+    function walletHref() { return "../app/dashboard.html"; }
+    function retryHref() { return "../app/deposit.html"; }
+
+    // ------------------------------------------------------------------
+    // Authentification — jamais de donnée financière sans session valide.
+    // ------------------------------------------------------------------
+    async function requireSession() {
+      const sb = await getSupabase();
+      if (!sb) return null;
+      const { data } = await sb.auth.getSession();
+      return data?.session || null;
+    }
+
+    function showReconnectScreen() {
+      setIcon("warning", "lock", false);
+      els.title.textContent = "Reconnectez-vous pour consulter l’état de votre paiement";
+      els.description.textContent = "Votre session FlexiCash n’est plus active. Vos identifiants de paiement restent en sécurité.";
+      setStatusBox("warning", "Aucune donnée financière ne peut être affichée sans une session valide.");
+      const next = `payments/return.html${location.search}`;
+      setActions([{ label: "Se connecter", href: `../auth/login.html?next=${encodeURIComponent(next)}`, primary: true }]);
+    }
+
+    function showMissingIdentifierScreen() {
+      setIcon("danger", "circle-x", false);
+      els.title.textContent = "Paiement introuvable";
+      els.description.textContent = "Aucune référence exploitable n’a été fournie pour vérifier ce paiement.";
+      setStatusBox("danger", "Retournez dans FlexiCash et reprenez l’opération depuis votre portefeuille.");
+      setActions([{ label: "Retour au portefeuille", href: walletHref(), primary: true }]);
+    }
+
+    function showNotFoundScreen() {
+      setIcon("danger", "circle-x", false);
+      els.title.textContent = "Paiement introuvable";
+      els.description.textContent = "Cette opération est introuvable ou ne correspond pas à votre compte.";
+      setStatusBox("danger", "Aucune donnée n’est affichée pour une opération qui ne vous appartient pas.");
+      setActions([{ label: "Retour au portefeuille", href: walletHref(), primary: true }]);
+    }
+
+    function showNetworkErrorScreen(onRetry) {
+      setIcon("warning", "wifi-off", false);
+      els.title.textContent = "Vérification indisponible";
+      els.description.textContent = "FlexiCash n’a pas pu joindre le service sécurisé pour le moment.";
+      setStatusBox("warning", "Aucune conclusion n’est affichée tant que le statut n’est pas confirmé par le serveur.");
+      setActions([
+        { label: "Actualiser", id: "pr-retry-btn", primary: true },
+        { label: "Retour au portefeuille", href: walletHref() },
+      ]);
+      document.getElementById("pr-retry-btn")?.addEventListener("click", onRetry, { once: true });
+    }
+
+    // ------------------------------------------------------------------
+    // Rendu par statut backend (source unique de vérité).
+    // ------------------------------------------------------------------
+    // Écran partagé : annulation utilisateur (URL result=cancelled avant
+    // conclusion backend) ET annulation confirmée par le backend. Le
+    // paramètre d'URL ne modifie jamais l'état financier — il choisit
+    // uniquement ce texte, jamais "paiement reçu"/"vérification en cours".
+    function renderCancelledScreen(data) {
+      showAmount(data.amount, data.currency);
+      showMeta(data.reference || reference);
+      setIcon("warning", "circle-slash", false);
+      els.title.textContent = "Paiement annulé";
+      els.description.textContent = "Vous avez quitté le paiement avant sa confirmation.";
+      setStatusBox("warning", "Nous n’avons reçu aucune confirmation de paiement. Votre solde FlexiCash n’a pas été crédité.");
+      setActions([
+        { label: "Réessayer le dépôt", href: retryHref(), primary: true },
+        { label: "Retour au portefeuille", href: walletHref() },
+      ]);
+    }
+
+    function renderStatus(data) {
+      showAmount(data.amount, data.currency);
+      showMeta(data.reference || reference);
+
+      if (data.status === "completed") {
+        setIcon("success", "check", false);
+        els.title.textContent = "Paiement confirmé";
+        els.description.textContent = "Le montant a été enregistré dans votre portefeuille FlexiCash.";
+        setStatusBox("success", "Paiement vérifié directement auprès du fournisseur.");
+        setActions([{ label: "Retour au portefeuille", href: walletHref(), primary: true }]);
+        return;
+      }
+
+      if (data.status === "failed") {
+        setIcon("danger", "circle-x", false);
+        els.title.textContent = "Paiement non reçu";
+        els.description.textContent = "Le paiement n’a pas pu être confirmé. Votre solde FlexiCash n’a pas été crédité.";
+        setStatusBox("danger", "Aucun montant n’a été crédité pour cette tentative.");
+        const buttons = [{ label: "Retour au portefeuille", href: walletHref() }];
+        if (data.canRetry) buttons.unshift({ label: "Réessayer", href: retryHref(), primary: true });
+        setActions(buttons);
+        return;
+      }
+
+      if (data.status === "cancelled") { renderCancelledScreen(data); return; }
+
+      if (data.status === "processing") {
+        setIcon("info", "loader", true);
+        els.title.textContent = "Vérification en cours";
+        els.description.textContent = "Nous attendons la confirmation de votre paiement.";
+        setStatusBox("info", "FlexiCash vérifie actuellement l’état de votre paiement.");
+        setActions([]);
+        return;
+      }
+
+      // pending
+      setIcon("info", "clock-3", true);
+      els.title.textContent = "Paiement reçu";
+      els.description.textContent = "Nous attendons la confirmation du fournisseur de paiement.";
+      setStatusBox("info", "Vérification en cours…");
+      setActions([]);
+    }
+
+    // Affiché une seule fois, quand le polling atteint sa limite de 60s sans
+    // statut final. Aucune animation : le chargement infini est interdit.
+    function renderStillPendingScreen(data) {
+      showAmount(data.amount, data.currency);
+      showMeta(data.reference || reference);
+      setIcon("warning", "clock-3", false);
+      els.title.textContent = "Confirmation toujours en attente";
+      els.description.textContent = "Nous n’avons pas encore reçu de confirmation du prestataire.";
+      setStatusBox("warning", "Vous pouvez revenir à votre portefeuille et vérifier plus tard.");
+      setActions([
+        { label: "Vérifier à nouveau", id: "pr-refresh-btn" },
+        { label: "Retour au portefeuille", href: walletHref(), primary: true },
+      ]);
+      document.getElementById("pr-refresh-btn")?.addEventListener("click", () => location.reload(), { once: true });
+    }
+
+    // ------------------------------------------------------------------
+    // Polling : immédiat, puis 2s pendant ~20s, puis 5s jusqu'à ~60s total.
+    // ------------------------------------------------------------------
+    const POLL_TOTAL_MS = 60000;
+    const POLL_FAST_UNTIL_MS = 20000;
+    const POLL_FAST_INTERVAL_MS = 2000;
+    const POLL_SLOW_INTERVAL_MS = 5000;
+
+    async function pollUntilFinal(fetchStatus) {
+      const startedAt = Date.now();
+      let result = await fetchStatus();
+      if (!result.ok) return result;
+      renderStatus(result.data);
+
+      while (!result.data.isFinal && (Date.now() - startedAt) < POLL_TOTAL_MS) {
+        const elapsed = Date.now() - startedAt;
+        const delay = elapsed < POLL_FAST_UNTIL_MS ? POLL_FAST_INTERVAL_MS : POLL_SLOW_INTERVAL_MS;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        // eslint-disable-next-line no-await-in-loop
+        result = await fetchStatus();
+        if (!result.ok) return result;
+        renderStatus(result.data);
+      }
+
+      if (!result.data.isFinal) renderStillPendingScreen(result.data);
+      return result;
+    }
+
+    function getVinhtOrderIdFromReference(value) {
+      const m = String(value || "").match(/^VINHT-MC-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-A\d+$/i);
+      return m ? m[1] : "";
+    }
+
+    async function run() {
+      const vinhtOrderId = getVinhtOrderIdFromReference(reference);
+      if (vinhtOrderId) {
+        const target = new URL("https://vinht.store/payment.html");
+        target.searchParams.set("order_id", vinhtOrderId);
+        location.replace(target.toString());
+        return;
+      }
+
+      if (!operationId && !reference) {
+        showMissingIdentifierScreen();
+        return;
+      }
+
+      const session = await requireSession();
+      if (!session) {
+        showReconnectScreen();
+        return;
+      }
+
+      let lastMoncashConfirmAt = 0;
+      const fetchStatus = async () => {
+        // Business Key fallback: the MonCash middleware may return only an
+        // encrypted transactionId to our callback. The browser already kept
+        // the immutable FlexiCash order reference before redirecting, so use
+        // that reference to verify the payment by orderId. The call is
+        // idempotent and throttled while this page polls.
+        if (provider === "moncash" && reference && (Date.now() - lastMoncashConfirmAt) >= 8000) {
+          lastMoncashConfirmAt = Date.now();
+          try {
+            const confirmation = await fundingService.confirmMoncashOnlinePayment(reference);
+            if (confirmation?.ok && (confirmation.data?.status === "completed" || confirmation.data?.payment_status === "completed")) {
+              sessionStorage.removeItem("fx.moncash.deposit.reference");
+              sessionStorage.removeItem("fx.moncash.return.purpose");
+            }
+          } catch {
+            // The status endpoint below remains authoritative. A transient
+            // provider error must never become a false success in the UI.
+          }
+        }
+        return paymentReturnService.getStatus({
+          operationId: operationId || null,
+          provider: provider || null,
+          reference: operationId ? null : (reference || null),
+        });
+      };
+
+      let first = await fetchStatus();
+      if (!first.ok) {
+        if (first.network) {
+          showNetworkErrorScreen(() => pollUntilFinal(fetchStatus));
+          return;
+        }
+        showNotFoundScreen();
+        return;
+      }
+
+      const cancelledByUser = resultSignal === "cancelled" || resultSignal === "canceled";
+      if (resultSignal) {
+        const signalCall = paymentReturnService.recordSignal({
+          operationId: first.data.operationId || operationId || null,
+          provider: first.data.provider || provider || null,
+          signal: resultSignal,
+        });
+
+        // Une annulation de navigateur doit être confirmée par le backend
+        // avant d'être présentée comme telle. Si le fournisseur avait déjà
+        // confirmé le paiement, le backend refuse l'annulation et l'écran
+        // continue vers processing/completed au lieu de mentir au client.
+        if (cancelledByUser) {
+          await signalCall;
+          sessionStorage.removeItem("fx.online.deposit.pending-return");
+          const refreshed = await fetchStatus();
+          if (refreshed.ok) first = refreshed;
+        } else {
+          signalCall.catch(() => {});
+        }
+      }
+
+      if (cancelledByUser && first.data.status === "cancelled") {
+        renderCancelledScreen(first.data);
+        return;
+      }
+
+      renderStatus(first.data);
+      if (!first.data.isFinal) await pollUntilFinal(fetchStatus);
+    }
+
+    run();
+  </script>
+</body>
+</html>
