@@ -1,0 +1,171 @@
+<!doctype html><html lang="fr"><head>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Autoriser une application — FlexiCash</title>
+<meta name="description" content="Autorisez une application tierce à accéder à votre compte FlexiCash."/>
+<meta name="robots" content="noindex, nofollow"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/reset.css"><link rel="stylesheet" href="../assets/css/variables.css">
+<link rel="stylesheet" href="../assets/css/components.css"><link rel="stylesheet" href="../assets/css/public.css">
+<link rel="stylesheet" href="../assets/css/auth.css">
+<link rel="stylesheet" href="../assets/css/responsive.css">
+<link rel="stylesheet" href="../assets/css/brand-green.css">
+<script src="../assets/vendor/lucide/lucide-subset.js" defer></script>
+<link rel="stylesheet" href="../assets/css/ux-polish.css">
+<style>
+.consent-mobile-brand{display:none}
+@media (max-width:900px){
+  .consent-mobile-brand{
+    display:flex;align-items:center;gap:10px;margin-bottom:16px;
+    font-family:var(--font-display);font-weight:800;font-size:1.05rem;color:var(--navy-900);
+  }
+}
+</style>
+</head><body>
+<main class="auth-shell">
+  <aside class="auth-side">
+    <a href="../index.html" class="brand" aria-label="FlexiCash" style="display:inline-block"><img src="../images/secondlogo.png" alt="FlexiCash" style="height:64px;width:auto;border-radius:14px;display:block"></a>
+    <div class="pitch">
+      <span class="chip">Autorisation d'accès</span>
+      <h2>Vous décidez ce que les applications peuvent voir.</h2>
+      <p>FlexiCash ne partage jamais votre mot de passe, votre code secret ni votre solde avec une application tierce sans votre accord explicite, et jamais plus que ce qui est affiché ici.</p>
+      <ul class="auth-trust-list">
+        <li>Vous pouvez refuser à tout moment sans conséquence sur votre compte FlexiCash.</li>
+        <li>Aucun mot de passe ni code secret FlexiCash n'est jamais transmis à l'application.</li>
+        <li>Cette autorisation ne donne aucun accès à votre solde, vos transactions ou vos documents.</li>
+      </ul>
+    </div>
+  </aside>
+  <section class="auth-panel">
+    <div class="auth-card" id="consent-card">
+      <div id="consent-loading">
+        <h1>Vérification de la demande…</h1>
+        <p class="sub">Merci de patienter un instant.</p>
+      </div>
+    </div>
+  </section>
+</main>
+<script type="module">
+import "../assets/js/app.js";
+import { getSupabase } from "../assets/js/services/supabase-client.js";
+import { authService, safeNext } from "../assets/js/services/auth-service.js";
+import { toast } from "../assets/js/components.js";
+
+const params = new URLSearchParams(location.search);
+const authorizationId = (params.get("authorization_id") || "").trim();
+const card = document.getElementById("consent-card");
+
+function appName(details) {
+  return details?.client?.client_name || details?.client?.name || details?.client_name || "VinHT";
+}
+
+function renderError(title, message, { showBackHome = true } = {}) {
+  card.innerHTML = `
+    <h1>${title}</h1>
+    <p class="sub">${message}</p>
+    ${showBackHome ? '<a class="btn btn-secondary btn-block lg" href="../index.html" style="margin-top:16px">Retour à l\'accueil</a>' : ""}
+  `;
+}
+
+function renderConsentScreen(details) {
+  const name = appName(details);
+  card.innerHTML = `
+    <div class="consent-mobile-brand"><img src="../images/smallspacelogo.png" alt="" width="28" height="28">FlexiCash</div>
+    <h1>${name} souhaite accéder à votre compte FlexiCash</h1>
+    <p class="sub">En autorisant ${name}, vous acceptez de partager uniquement les informations suivantes :</p>
+    <ul class="auth-trust-list" style="margin:16px 0">
+      <li>Confirmer votre identité FlexiCash.</li>
+      <li>Connaître votre adresse e-mail.</li>
+      <li>Accéder aux informations basiques de votre profil (nom).</li>
+    </ul>
+    <p class="muted" style="font-size:.85rem;margin-bottom:18px">
+      ${name} ne reçoit jamais votre solde, vos transactions, votre code secret, vos documents
+      d'identité, votre mot de passe, ni la capacité de déplacer de l'argent depuis ce compte.
+    </p>
+    <div id="consent-msg" class="muted" style="font-size:.85rem;display:none;margin-bottom:10px"></div>
+    <button class="btn btn-primary btn-block lg" type="button" id="consent-approve">Autoriser ${name}</button>
+    <button class="btn btn-ghost btn-block lg" type="button" id="consent-deny" style="margin-top:10px">Refuser</button>
+  `;
+
+  const approveBtn = document.getElementById("consent-approve");
+  const denyBtn = document.getElementById("consent-deny");
+  const msg = document.getElementById("consent-msg");
+  const setMsg = (t) => { if (msg) { msg.textContent = t || ""; msg.style.display = t ? "" : "none"; } };
+  const setBusy = (busy, label) => {
+    approveBtn.disabled = busy; denyBtn.disabled = busy;
+    if (busy && label) approveBtn.textContent = label;
+  };
+
+  approveBtn.addEventListener("click", async () => {
+    setMsg("");
+    setBusy(true, "Autorisation en cours…");
+    try {
+      const sb = await getSupabase();
+      const { data, error } = await sb.auth.oauth.approveAuthorization(authorizationId);
+      if (error) throw error;
+      const redirectUrl = data?.redirect_url || data?.redirectUrl;
+      if (!redirectUrl) throw new Error("Réponse d'autorisation invalide.");
+      window.location.assign(redirectUrl);
+    } catch (err) {
+      setBusy(false);
+      approveBtn.textContent = `Autoriser ${name}`;
+      toast({ type: "error", title: "Autorisation impossible", message: err?.message || "Réessayez dans un instant." });
+    }
+  });
+
+  denyBtn.addEventListener("click", async () => {
+    setMsg("");
+    setBusy(true);
+    denyBtn.textContent = "Refus en cours…";
+    try {
+      const sb = await getSupabase();
+      const { data, error } = await sb.auth.oauth.denyAuthorization(authorizationId);
+      if (error) throw error;
+      const redirectUrl = data?.redirect_url || data?.redirectUrl;
+      if (redirectUrl) { window.location.assign(redirectUrl); return; }
+      renderError("Autorisation refusée", "Vous pouvez fermer cette fenêtre en toute sécurité.");
+    } catch (err) {
+      setBusy(false);
+      denyBtn.textContent = "Refuser";
+      toast({ type: "error", title: "Action impossible", message: err?.message || "Réessayez dans un instant." });
+    }
+  });
+}
+
+async function boot() {
+  if (!authorizationId) {
+    renderError("Demande invalide", "Le lien d'autorisation est incomplet ou a expiré. Redemandez la connexion depuis l'application d'origine.");
+    return;
+  }
+
+  const session = await authService.getSession();
+  if (!session) {
+    const next = safeNext(location.pathname + location.search) || (location.pathname + location.search);
+    authService.rememberNext(next);
+    window.location.assign(`../auth/login.html?next=${encodeURIComponent(next)}`);
+    return;
+  }
+
+  try {
+    const sb = await getSupabase();
+    if (!sb || !sb.auth?.oauth?.getAuthorizationDetails) {
+      renderError("Service indisponible", "L'autorisation d'applications tierces n'est pas disponible pour le moment.");
+      return;
+    }
+    const { data, error } = await sb.auth.oauth.getAuthorizationDetails(authorizationId);
+    if (error) throw error;
+    const existingRedirect = data?.redirect_url || data?.redirectUrl;
+    if (existingRedirect) {
+      window.location.assign(existingRedirect);
+      return;
+    }
+    renderConsentScreen(data || {});
+  } catch (err) {
+    console.warn("[FlexiCash] consentement OAuth:", err?.message || err);
+    renderError("Demande introuvable", "Cette demande d'autorisation n'est plus valide. Redemandez la connexion depuis l'application d'origine.");
+  }
+}
+
+boot();
+</script></body></html>
