@@ -1,181 +1,236 @@
-# FlexiCash Web
+# FlexiCash — Web Administrative Review
 
-FlexiCash est une plateforme Web de portefeuille électronique et de paiement conçue pour gérer des comptes utilisateurs, des portefeuilles multi-profils, des opérations financières, des demandes de paiement, des dépôts/retraits, la sécurité du compte et l'administration opérationnelle.
+FlexiCash est une plateforme Web de portefeuille électronique et de paiement conçue pour gérer des comptes utilisateurs, des profils financiers, des portefeuilles, des transferts, des demandes de paiement, des dépôts/retraits, l’épargne, la sécurité du compte et les opérations d’administration.
 
-> **Édition administrative Web**  
-> Ce dépôt est une édition volontairement nettoyée du projet FlexiCash destinée à la revue technique et administrative. Il contient uniquement les éléments nécessaires à l'application Web, à son backend, à ses tests et à son exploitation. Les sources mobiles natives, les outils d'agents IA, les notes de travail, les handoffs et les documents internes historiques n'en font pas partie.
+Ce dépôt est l’**édition publique de revue technique destinée à l’administration**. Il a été préparé à partir du projet FlexiCash principal, tout en retirant volontairement ce qui n’est pas utile à une revue Web ou ce qui ne doit pas être publié.
 
-## Vue d'ensemble
+> **Important** — Ce dépôt n’est pas le dépôt de production et ne doit pas être utilisé pour déplacer de l’argent réel. Les actions financières y sont neutralisées. Le moteur financier privé, les migrations SQL sensibles, les secrets, les clés fournisseurs et les outils d’exploitation restent dans le dépôt principal privé et dans les gestionnaires de secrets.
 
-FlexiCash s'appuie sur une architecture Web classique, avec un frontend en HTML5/CSS3/JavaScript ES Modules et un backend Supabase. Les opérations financières sont traitées côté serveur et reposent sur un ledger en double entrée plutôt que sur la modification directe d'un simple champ de solde.
+## Objectif de ce dépôt
 
-Fonctionnalités principales :
+Permettre à un responsable administratif ou à un évaluateur technique de comprendre rapidement :
 
-- création de compte, connexion et récupération d'accès ;
-- profils financiers Personnel et Professionnel ;
-- wallets HTG et USD selon les capacités disponibles ;
-- consultation des soldes et de l'activité ;
-- transferts internes FlexiCash ;
-- demandes de paiement et QR codes ;
-- dépôts et retraits via rails configurés ;
+- ce qu’est FlexiCash ;
+- comment l’application Web est structurée ;
+- quelles fonctionnalités sont proposées ;
+- comment l’authentification et la sécurité sont abordées ;
+- comment les flux financiers sont présentés côté client ;
+- quelles protections empêchent ce dépôt public de devenir un accès indirect à la Production ;
+- comment la qualité de cette édition est contrôlée automatiquement.
+
+## Périmètre
+
+### Inclus
+
+- page d’entrée Web FlexiCash ;
+- parcours de connexion Web ;
+- surface de création de compte ;
+- dashboard ;
+- envoyer / recevoir ;
+- dépôts / retraits ;
+- transactions ;
+- scan QR ;
 - épargne ;
-- KYC, niveaux de conformité et limites ;
-- PIN transactionnel, MFA, appareils et gel de compte ;
-- notifications, support, récupération et litiges ;
-- administration, audit, rapprochement et contrôles de sécurité ;
-- Merchant API / Hosted Checkout pour les intégrations externes.
+- profil ;
+- sécurité ;
+- paramètres ;
+- support ;
+- design system Web simplifié ;
+- configuration Supabase neutralisée ;
+- adaptateurs Web sans Capacitor ;
+- Service Worker Web/PWA ;
+- configuration Vercel de revue ;
+- GitHub Actions et contrôle anti-secret.
 
-## Architecture
+### Volontairement exclu
+
+- Android ;
+- iOS ;
+- Capacitor et plugins natifs ;
+- biométrie native ;
+- build mobile et synchronisation native ;
+- `.claude/`, `CLAUDE.md`, MCP, prompts, agents et fichiers d’atelier IA ;
+- handoffs et rapports internes de développement ;
+- fichiers temporaires et sauvegardes ;
+- secrets et fichiers `.env` ;
+- clés `service_role` ;
+- migrations et SQL du cœur financier privé ;
+- configuration fournisseur privée ;
+- automatisations d’exploitation Production ;
+- données utilisateurs/KYC réelles.
+
+## Architecture générale
 
 ```text
 Navigateur Web
     │
-    ├── HTML / CSS / JavaScript ES Modules
+    ├── HTML5 / CSS3 / JavaScript ES Modules
     │
-    ├── Supabase Auth
+    ├── Authentification Web
+    │      └── Supabase Auth au runtime configuré
     │
-    ├── RPC / Edge Functions
-    │       │
-    │       ├── Sécurité / KYC / limites
-    │       ├── Wallets / ledger double entrée
-    │       ├── Dépôts / retraits / transferts
-    │       └── Merchant / Platform services
+    ├── Interfaces Client
+    │      ├── Dashboard
+    │      ├── Envoyer / Recevoir
+    │      ├── Dépôt / Retrait
+    │      ├── Transactions
+    │      ├── QR / Scan
+    │      ├── Épargne
+    │      └── Profil / Sécurité / Paramètres
     │
-    └── Providers externes
-            ├── MonCash
-            ├── Stripe
-            └── canaux configurés
+    └── Backend FlexiCash privé en Production
+           ├── Auth / KYC / limites
+           ├── Wallets
+           ├── Ledger double entrée
+           ├── RPC / Edge Functions
+           ├── Providers externes
+           └── Audit / rapprochement
 ```
 
-Les callbacks ou retours navigateur d'un fournisseur ne sont pas considérés comme une preuve financière suffisante : la confirmation et la réconciliation sont réalisées côté serveur avant comptabilisation.
+Le navigateur n’est pas l’autorité financière. Les opérations réelles sont validées côté serveur dans le projet principal.
 
-## Stack technique
+## Principes financiers du système principal
 
-- **Frontend :** HTML5, CSS3, JavaScript vanilla, modules ES
-- **Authentification :** Supabase Auth
-- **Backend :** Supabase PostgreSQL, RPC et Edge Functions
-- **Stockage :** Supabase Storage selon les modules
-- **Hébergement Web :** Vercel
-- **CI :** GitHub Actions
-- **Tests :** Node.js, tests contractuels et parcours comportementaux
+L’architecture FlexiCash repose notamment sur les invariants suivants :
 
-Le frontend ne nécessite pas React, TypeScript, Vite ou Tailwind.
+1. **Ledger en double entrée** — les mouvements comptables doivent rester équilibrés.
+2. **Idempotence** — une même intention ne doit pas être comptabilisée deux fois.
+3. **Contrôle concurrent** — les opérations critiques sont protégées contre les doubles dépenses.
+4. **Revalidation serveur** — profil, wallet, devise, environnement, limites et autorisations sont contrôlés côté backend.
+5. **Historique immuable** — une correction financière se fait par reversal/écriture compensatoire, pas par suppression d’un mouvement historique.
+6. **Réconciliation fournisseur** — un retour navigateur ou un callback isolé ne suffit pas pour déclarer un paiement réglé.
+7. **Échec fermé** — une indisponibilité du backend ne doit pas être présentée comme un succès financier.
 
-## Structure du dépôt
+Ces règles sont documentées dans le dossier administratif accompagnant ce dépôt. Le code privé qui les impose n’est pas publié ici.
+
+## Technologies visibles dans cette édition
+
+- HTML5 ;
+- CSS3 ;
+- JavaScript vanilla / ES Modules ;
+- Supabase JS chargé uniquement lorsque le runtime de revue est configuré ;
+- Cloudflare Turnstile pour le parcours de connexion ;
+- Service Worker Web/PWA ;
+- Vercel pour la configuration Web ;
+- GitHub Actions pour le contrôle automatique.
+
+Aucun framework frontend lourd n’est nécessaire pour cette édition.
+
+## Structure
 
 ```text
-.
-├── account/       État et gestion du compte
-├── admin/         Interface d'administration
-├── api/           Routes serveur Web spécifiques
-├── app/           Espace client authentifié
-├── assets/        CSS, JavaScript, icônes et ressources partagées
-├── auth/          Connexion, inscription, MFA et récupération
-├── images/        Ressources visuelles utiles à l'application
-├── legal/         Pages légales Web
-├── oauth/         Parcours OAuth Web
-├── onboarding/    Activation, profil, PIN et KYC
-├── payments/      Pages de retour et parcours de paiement Web
-├── supabase/      Schéma, migrations et fonctions backend versionnées
-├── tests/         Tests Web, sécurité et contrats métier
-├── .github/       Quality gate Web
-├── index.html     Entrée publique
-├── sw.js          Service Worker Web/PWA
-└── vercel.json    Configuration de déploiement Web
+FlexiCash-Administration/
+├── .github/
+│   └── workflows/
+│       └── quality-gate.yml
+├── app/
+│   ├── dashboard.html
+│   ├── deposit.html
+│   ├── profile.html
+│   ├── receive.html
+│   ├── savings.html
+│   ├── scan.html
+│   ├── security.html
+│   ├── send.html
+│   ├── settings.html
+│   ├── support.html
+│   ├── transactions.html
+│   └── withdraw.html
+├── assets/
+│   ├── css/
+│   ├── js/
+│   │   ├── pages/
+│   │   └── services/
+│   └── vendor/
+├── auth/
+│   ├── callback.html
+│   ├── login.html
+│   └── register.html
+├── scripts/
+│   └── verify-web-edition.mjs
+├── index.html
+├── manifest.webmanifest
+├── sw.js
+├── vercel.json
+├── package.json
+└── README.md
 ```
 
-La structure exacte peut évoluer, mais le dépôt administratif exclut volontairement toute source mobile native ou configuration Capacitor.
+## Configuration runtime
 
-## Principes financiers
+Le dépôt ne contient volontairement aucune URL/clé Supabase active.
 
-Le moteur financier applique plusieurs invariants structurants :
+Pour une revue locale autorisée, les valeurs publiques nécessaires peuvent être injectées avant le chargement de l’application :
 
-1. **Double entrée** : chaque transaction comptable doit rester équilibrée.
-2. **Idempotence** : une même intention financière ne doit pas être comptabilisée deux fois.
-3. **Verrouillage concurrent** : les opérations critiques sont sérialisées lorsque nécessaire.
-4. **Pas de solde négatif** hors règle explicitement prévue côté serveur.
-5. **Immutabilité du ledger** : une correction crée une écriture inverse au lieu d'effacer l'historique.
-6. **Autorisation serveur** : profil, wallet, devise, environnement et droits sont revalidés côté backend.
-7. **Réconciliation provider** : le succès d'un navigateur ou d'un callback seul ne déclenche pas automatiquement un crédit définitif.
-
-## Sécurité
-
-Les contrôles de sécurité sont répartis en plusieurs couches :
-
-- sessions Supabase et contrôle d'état du compte ;
-- politiques RLS et fonctions serveur pour les données sensibles ;
-- RBAC pour l'administration ;
-- PIN transactionnel et autorisations sensibles liées à l'action ;
-- MFA/AAL2 pour les opérations administratives et sensibles ;
-- gestion des appareils et gel de compte ;
-- limites, KYC et contrôles anti-fraude ;
-- journalisation et audit ;
-- séparation des secrets serveur et du code navigateur ;
-- idempotence, locks et contrôles d'intégrité du ledger.
-
-Aucun secret fournisseur, clé privée, `service_role`, fichier `.env` de production ou donnée KYC réelle ne doit être versionné dans ce dépôt.
-
-## Installation locale
-
-Prérequis :
-
-- Node.js LTS ;
-- npm ;
-- un serveur HTTP local pour les modules ES.
-
-```bash
-npm ci
+```html
+<script>
+window.__FLEXICASH_CONFIG__ = {
+  supabaseUrl: "<SUPABASE_URL_AUTORISEE>",
+  supabaseAnonKey: "<ANON_KEY_AUTORISEE>",
+  turnstileSiteKey: "<TURNSTILE_SITE_KEY>"
+};
+</script>
 ```
 
-Pour servir le frontend, utiliser un serveur statique local de votre choix. Les pages ne doivent pas être ouvertes directement via `file://`.
+Une clé `service_role`, un secret Stripe/MonCash ou une clé privée ne doit **jamais** être ajouté au navigateur ou au dépôt.
 
-Les variables et secrets nécessaires aux fonctions serveur sont configurés dans les environnements d'exécution et ne sont pas fournis dans le dépôt.
+Sans configuration runtime, l’application reste en mode de revue et échoue de manière fermée : elle n’invente ni solde ni transaction réussie.
 
-## Quality gate
+## Exécution locale
 
-La version administrative conserve des contrôles automatisés centrés sur le Web :
+Prérequis : Node.js 20+ et un serveur HTTP local.
 
 ```bash
-npm run test:syntax
-npm run test:security
-npm run test:references
-npm run test:frontend-ux
-npm run test:behavioral
 npm test
 ```
 
-Les tests qui nécessitent une infrastructure ou des secrets réels doivent rester isolés des tests de revue et ne doivent jamais provoquer une transaction financière réelle.
+Puis servir le dossier avec un serveur statique de votre choix. Les modules ES ne doivent pas être ouverts directement avec `file://`.
 
-## Déploiement
+## Quality Gate
 
-Le frontend Web est déployé en HTTPS. Le pipeline attendu est :
+Chaque push sur `main` lance automatiquement **Web Administrative Quality Gate**.
 
-```text
-Git -> Quality Gate -> validation -> déploiement Web -> contrôles post-déploiement
+Le contrôle vérifie notamment :
+
+- présence des fichiers Web essentiels ;
+- absence des dossiers Android/iOS/mobile ;
+- absence de fichiers Capacitor ;
+- absence de `.claude`, `CLAUDE.md` et `.mcp.json` ;
+- absence de motifs de secrets serveur connus ;
+- cohérence de l’édition Web administrative.
+
+Commande locale :
+
+```bash
+npm test
 ```
 
-La configuration des providers, secrets, webhooks et environnements est gérée hors du dépôt source.
+## Sécurité de la publication
 
-## API et intégrations
+Ce dépôt étant public, la règle appliquée est simple : **publier ce qui aide à comprendre le produit, ne pas publier ce qui augmente inutilement la surface d’attaque du système financier**.
 
-FlexiCash expose plusieurs surfaces d'intégration :
+Le dépôt principal privé reste la source de vérité pour :
 
-- RPC Supabase utilisées par le frontend authentifié ;
-- Edge Functions pour les opérations serveur sensibles ;
-- routes Web dédiées pour certains callbacks/providers ;
-- Merchant API / Hosted Checkout pour les intégrations marchandes.
+- le ledger et ses migrations ;
+- les RPC financières ;
+- les Edge Functions sensibles ;
+- les providers ;
+- les configurations Production ;
+- les tests financiers complets ;
+- les opérations d’administration privilégiées.
 
-Les intégrations doivent respecter l'authentification, les scopes, l'idempotence et la validation côté serveur. Un marchand externe ne doit pas marquer une commande comme payée uniquement sur la base d'un retour navigateur.
+## Relation avec le dossier administratif
+
+Le PDF administratif FlexiCash accompagne ce dépôt et documente notamment : contexte, objectifs, périmètre, parties prenantes, exigences fonctionnelles/non fonctionnelles, architecture, diagrammes, modèle de données, API, sécurité, tests, déploiement, maintenance, risques, livrables et annexes.
 
 ## Règle de validation
 
-Une fonctionnalité n'est considérée comme terminée que lorsqu'elle est **implémentée, documentée, testée et validée** avec un niveau de preuve adapté à son risque.
+> Aucune fonctionnalité n’est considérée comme terminée si elle n’est pas documentée, testée et validée.
 
-## Référence documentaire
+## Baseline
 
-Le dossier administratif PDF accompagne ce dépôt et présente le périmètre, l'architecture, le modèle de données, les API, la sécurité, le plan de tests, le déploiement, la maintenance, les risques et les diagrammes de référence.
+Édition préparée le **25 septembre 2026** à partir du dépôt principal FlexiCash, baseline source :
 
----
+`2d60e810a452f830964457f67335966c8d1b05dd`
 
-**FlexiCash - Web Administrative Review Edition**  
-Baseline technique de préparation : `main` au commit `2d60e810a452f830964457f67335966c8d1b05dd` (25 septembre 2026).
+Le dépôt principal reste privé et inchangé par cette édition administrative.
