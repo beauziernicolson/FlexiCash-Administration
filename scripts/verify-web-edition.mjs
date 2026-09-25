@@ -1,49 +1,130 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { dirname, extname, join, normalize, relative, resolve } from 'node:path';
 
 const root = process.cwd();
-const required = ['README.md', 'index.html', 'auth/login.html', 'app/dashboard.html'];
-const forbiddenRoots = ['android', 'ios', 'mobile', '.claude'];
-const forbiddenFiles = ['CLAUDE.md', '.mcp.json', 'capacitor.config.json', 'capacitor.config.ts'];
+const required = [
+  'README.md',
+  'index.html',
+  'auth/login.html',
+  'app/dashboard.html',
+  'admin/index.html',
+  'assets/js/config.js',
+  'assets/js/pages/app-review-pages.js',
+];
+const forbiddenRoots = [
+  'android',
+  'ios',
+  'mobile',
+  '.claude',
+  '.finality-lock',
+  'supabase',
+  'environments',
+  'api',
+];
+const forbiddenFiles = [
+  'CLAUDE.md',
+  '.mcp.json',
+  'capacitor.config.json',
+  'capacitor.config.ts',
+];
+const forbiddenExtensions = new Set([
+  '.env', '.pem', '.key', '.p12', '.pfx', '.jks', '.keystore',
+  '.sql', '.sqlite', '.db', '.log', '.map',
+]);
 
 const failures = [];
 for (const path of required) {
   if (!existsSync(join(root, path))) failures.push(`missing required file: ${path}`);
 }
 for (const path of forbiddenRoots) {
-  if (existsSync(join(root, path))) failures.push(`forbidden mobile/internal directory: ${path}`);
+  if (existsSync(join(root, path))) failures.push(`forbidden private/native directory: ${path}`);
 }
 for (const path of forbiddenFiles) {
-  if (existsSync(join(root, path))) failures.push(`forbidden mobile/internal file: ${path}`);
+  if (existsSync(join(root, path))) failures.push(`forbidden private/native file: ${path}`);
 }
 
 const secretPatterns = [
-  /SUPABASE_SERVICE_ROLE_KEY\s*=/i,
-  /MONCASH_(?:SANDBOX|PRODUCTION)_CLIENT_SECRET\s*=/i,
-  /STRIPE_SECRET_KEY\s*=/i,
+  /SUPABASE_SERVICE_ROLE_KEY\s*[:=]\s*["']?[^\s"']{8,}/i,
+  /MONCASH_(?:SANDBOX|PRODUCTION)_CLIENT_SECRET\s*[:=]\s*["']?[^\s"']{8,}/i,
+  /STRIPE_SECRET_KEY\s*[:=]\s*["']?[^\s"']{8,}/i,
+  /\bsk_(?:live|test)_[A-Za-z0-9]{16,}\b/,
+  /\brk_(?:live|test)_[A-Za-z0-9]{16,}\b/,
+  /\bwhsec_[A-Za-z0-9]{16,}\b/,
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
 ];
-const allowedExt = /\.(?:html|css|js|mjs|json|yml|yaml|txt)$/i;
+const scanExt = /\.(?:html|css|js|mjs|json|yml|yaml|txt|md)$/i;
 const skipped = new Set(['node_modules', '.git']);
+const htmlFiles = [];
+
 function walk(dir) {
   for (const name of readdirSync(dir)) {
     if (skipped.has(name)) continue;
     const full = join(dir, name);
     const stat = statSync(full);
-    if (stat.isDirectory()) walk(full);
-    else if (allowedExt.test(name)) {
-      const text = readFileSync(full, 'utf8');
-      for (const pattern of secretPatterns) {
-        if (pattern.test(text)) failures.push(`possible secret in ${relative(root, full)} (${pattern})`);
-      }
+    if (stat.isDirectory()) {
+      walk(full);
+      continue;
+    }
+
+    const rel = relative(root, full).replaceAll('\\', '/');
+    const lower = name.toLowerCase();
+    const extension = extname(lower);
+    if (forbiddenExtensions.has(extension) || lower === '.env' || lower.startsWith('.env.')) {
+      failures.push(`forbidden sensitive artifact: ${rel}`);
+    }
+
+    if (lower.endsWith('.html')) htmlFiles.push(full);
+    if (!scanExt.test(name)) continue;
+
+    const text = readFileSync(full, 'utf8');
+    for (const pattern of secretPatterns) {
+      if (pattern.test(text)) failures.push(`possible secret in ${rel} (${pattern})`);
     }
   }
 }
 walk(root);
 
+function localTarget(htmlFile, rawRef) {
+  const ref = rawRef.trim();
+  if (!ref || ref.startsWith('#')) return null;
+  if (/^(?:https?:|mailto:|tel:|data:|javascript:|\/\/)/i.test(ref)) return null;
+
+  const clean = ref.split('#')[0].split('?')[0];
+  if (!clean) return null;
+  const decoded = decodeURIComponent(clean);
+  const target = decoded.startsWith('/')
+    ? resolve(root, `.${decoded}`)
+    : resolve(dirname(htmlFile), decoded);
+
+  const normalizedRoot = normalize(`${root}/`);
+  const normalizedTarget = normalize(target);
+  if (!normalizedTarget.startsWith(normalizedRoot) && normalizedTarget !== normalize(root)) {
+    return { escaped: true, target: normalizedTarget };
+  }
+  return { escaped: false, target: normalizedTarget };
+}
+
+const refPattern = /\b(?:href|src)\s*=\s*["']([^"']+)["']/gi;
+for (const htmlFile of htmlFiles) {
+  const relHtml = relative(root, htmlFile).replaceAll('\\', '/');
+  const text = readFileSync(htmlFile, 'utf8');
+  for (const match of text.matchAll(refPattern)) {
+    const rawRef = match[1];
+    const resolved = localTarget(htmlFile, rawRef);
+    if (!resolved) continue;
+    if (resolved.escaped) {
+      failures.push(`local reference escapes repository in ${relHtml}: ${rawRef}`);
+      continue;
+    }
+    if (!existsSync(resolved.target)) {
+      failures.push(`broken local reference in ${relHtml}: ${rawRef}`);
+    }
+  }
+}
+
 if (failures.length) {
   console.error('FlexiCash Web edition verification FAILED');
-  failures.forEach((item) => console.error(`- ${item}`));
+  [...new Set(failures)].forEach((item) => console.error(`- ${item}`));
   process.exit(1);
 }
-console.log('FlexiCash Web edition verification PASS');
+console.log(`FlexiCash Web edition verification PASS (${htmlFiles.length} HTML files checked)`);
