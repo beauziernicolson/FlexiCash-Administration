@@ -14,6 +14,9 @@
 <script src="../assets/vendor/lucide/lucide-subset.js" defer></script>
 <link rel="stylesheet" href="../assets/css/ux-polish.css">
 <style>
+/* Identité FlexiCash compacte, visible UNIQUEMENT quand .auth-side est masqué
+   (même seuil que assets/css/auth.css, où .auth-side{display:none} sous 900px) :
+   sans elle, le branding FlexiCash disparaîtrait totalement sur mobile. */
 .consent-mobile-brand{display:none}
 @media (max-width:900px){
   .consent-mobile-brand{
@@ -56,6 +59,8 @@ const params = new URLSearchParams(location.search);
 const authorizationId = (params.get("authorization_id") || "").trim();
 const card = document.getElementById("consent-card");
 
+// Nom d'affichage de l'application demandeuse : ne jamais fabriquer un nom
+// si le backend n'en fournit pas — VinHT reste le seul client connu à ce jour.
 function appName(details) {
   return details?.client?.client_name || details?.client?.name || details?.client_name || "VinHT";
 }
@@ -106,6 +111,8 @@ function renderConsentScreen(details) {
       if (error) throw error;
       const redirectUrl = data?.redirect_url || data?.redirectUrl;
       if (!redirectUrl) throw new Error("Réponse d'autorisation invalide.");
+      // Redirection UNIQUEMENT vers l'URL renvoyée par Supabase — jamais un
+      // paramètre fabriqué côté client.
       window.location.assign(redirectUrl);
     } catch (err) {
       setBusy(false);
@@ -124,6 +131,8 @@ function renderConsentScreen(details) {
       if (error) throw error;
       const redirectUrl = data?.redirect_url || data?.redirectUrl;
       if (redirectUrl) { window.location.assign(redirectUrl); return; }
+      // Si Supabase ne renvoie pas d'URL pour un refus, on reste sur une
+      // page FlexiCash neutre plutôt que d'inventer une redirection.
       renderError("Autorisation refusée", "Vous pouvez fermer cette fenêtre en toute sécurité.");
     } catch (err) {
       setBusy(false);
@@ -141,6 +150,7 @@ async function boot() {
 
   const session = await authService.getSession();
   if (!session) {
+    // Conserve le retour exact vers ce même écran de consentement après connexion.
     const next = safeNext(location.pathname + location.search) || (location.pathname + location.search);
     authService.rememberNext(next);
     window.location.assign(`../auth/login.html?next=${encodeURIComponent(next)}`);
@@ -155,6 +165,8 @@ async function boot() {
     }
     const { data, error } = await sb.auth.oauth.getAuthorizationDetails(authorizationId);
     if (error) throw error;
+    // Comportement officiel Supabase : si un consentement existe déjà et
+    // qu'une URL de redirection est directement fournie, on la suit telle quelle.
     const existingRedirect = data?.redirect_url || data?.redirectUrl;
     if (existingRedirect) {
       window.location.assign(existingRedirect);
