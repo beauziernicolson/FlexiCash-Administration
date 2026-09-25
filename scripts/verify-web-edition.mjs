@@ -67,8 +67,6 @@ const secretPatterns = [
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
 ];
 
-// Aucun de ces motifs ne doit subsister dans le RUNTIME Web publié. Les fichiers
-// de documentation/audit peuvent bien sûr expliquer que le natif a été retiré.
 const nativeRuntimePatterns = [
   ['Capacitor package import', /@capacitor\//i],
   ['window.Capacitor', /window\.Capacitor\b/],
@@ -113,9 +111,10 @@ function walk(dir) {
       if (pattern.test(text)) failures.push(`possible secret in ${rel} (${pattern})`);
     }
 
-    // README/audit files peuvent mentionner les mots "Capacitor" ou "mobile"
-    // pour expliquer les exclusions. Seul le code runtime HTML/JS est interdit.
-    if (runtimeNativeScanExt.test(name)) {
+    // Le scanner lui-même contient les motifs interdits sous forme de regex.
+    // On contrôle uniquement le runtime produit, pas scripts/ ni les docs d'audit.
+    const isAuditTooling = rel.startsWith('scripts/');
+    if (!isAuditTooling && runtimeNativeScanExt.test(name)) {
       for (const [label, pattern] of nativeRuntimePatterns) {
         if (pattern.test(text)) failures.push(`native runtime residue in ${rel}: ${label}`);
       }
