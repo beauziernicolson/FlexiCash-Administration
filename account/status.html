@@ -1,1 +1,27 @@
-<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Statut du compte — FlexiCash</title><link rel="stylesheet" href="../assets/css/reset.css"><link rel="stylesheet" href="../assets/css/variables.css"><link rel="stylesheet" href="../assets/css/components.css"><link rel="stylesheet" href="../assets/css/global.css"></head><body><main class="container section"><a class="brand" href="../index.html"><span class="brand-flexi">Flexi</span><span class="brand-cash">Cash</span></a><div class="card mt-24"><h1>Statut du compte</h1><p class="muted">Le statut réel est calculé côté serveur à partir du profil, du KYC, du produit wallet et des éventuelles restrictions.</p><div class="stack mt-16"><div class="card"><strong>Profil à compléter</strong><p class="muted">Informations de base encore nécessaires.</p></div><div class="card"><strong>Compte Basic actif</strong><p class="muted">Accès aux capacités autorisées par les limites courantes.</p></div><div class="card"><strong>Compte vérifié</strong><p class="muted">KYC approuvé et limites correspondantes.</p></div><div class="card"><strong>Compte restreint / gelé</strong><p class="muted">Les opérations financières sont bloquées jusqu’à résolution du motif.</p></div></div></div></main></body></html>
+<!doctype html><html lang="fr"><head>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Statut du compte — FlexiCash</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/reset.css"><link rel="stylesheet" href="../assets/css/variables.css">
+<link rel="stylesheet" href="../assets/css/components.css"><link rel="stylesheet" href="../assets/css/auth.css">
+<link rel="stylesheet" href="../assets/css/responsive.css">
+<link rel="stylesheet" href="../assets/css/brand-green.css">
+<script src="../assets/vendor/lucide/lucide-subset.js" defer></script>
+<link rel="stylesheet" href="../assets/css/ux-polish.css">
+</head><body>
+<div class="onb-shell"><div class="onb-top"><a href="../index.html" class="brand brand-wordmark" aria-label="FlexiCash"><span class="brand-flexi">Flexi</span><span class="brand-cash">Cash</span></a></div>
+<div class="onb-body"><div class="onb-card">
+  <h1 class="onb-title">Comprendre le statut de votre compte</h1>
+  <p class="onb-sub">FlexiCash vérifie d’abord votre profil et l’activation du portefeuille. Le PIN et la vérification d’identité renforcent ensuite la sécurité et les limites.</p>
+  <div class="account-status-timeline mt-24">
+    <div class="card"><div class="row between"><strong>1. Profil à compléter</strong><span class="badge badge-pending">Ouverture</span></div><p class="muted mt-8">Confirmez votre nom complet et votre numéro de téléphone.</p></div>
+    <div class="card"><div class="row between"><strong>2. Mini Wallet ouvert</strong><span class="badge badge-success">Gratuit</span></div><p class="muted mt-8">Votre portefeuille est ouvert dès l’inscription. Le passage au Full Wallet reste facultatif et ses conditions sont affichées dans l’application.</p></div>
+    <div class="card"><div class="row between"><strong>3. Compte Basic actif</strong><span class="badge badge-success">Utilisable</span></div><p class="muted mt-8">Accédez au dashboard et aux opérations autorisées par les limites du compte.</p></div>
+    <div class="card"><div class="row between"><strong>4. Compte vérifié</strong><span class="badge badge-success">KYC approuvé</span></div><p class="muted mt-8">La vérification d’identité permet d’obtenir les limites et services prévus pour les comptes vérifiés.</p></div>
+    <div class="card"><div class="row between"><strong>Compte restreint, suspendu ou fermé</strong><span class="badge badge-danger">Exception</span></div><p class="muted mt-8">Certaines opérations sont bloquées. Consultez la notification reçue ou contactez le support.</p></div>
+  </div>
+  <div class="onb-actions"><a href="../app/support.html" class="btn btn-ghost">Contacter le support</a><a href="../app/dashboard.html" class="btn btn-primary">Ouvrir mon dashboard</a></div>
+</div></div></div>
+<script type="module">import "../assets/js/app.js";</script></body></html>
