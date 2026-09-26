@@ -1,1 +1,206 @@
-<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connexion — FlexiCash</title></head><body><main style="font-family:Inter,sans-serif;max-width:640px;margin:15vh auto;padding:24px"><h1>Finalisation de la connexion</h1><p>Le callback OAuth est traité par le runtime Web configuré. Aucun secret n’est stocké dans cette page.</p><a href="login.html">Retour à la connexion</a></main></body></html>
+<!doctype html><html lang="fr"><head>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate"/>
+<title>Connexion en cours — FlexiCash</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/reset.css"><link rel="stylesheet" href="../assets/css/variables.css">
+<link rel="stylesheet" href="../assets/css/components.css"><link rel="stylesheet" href="../assets/css/auth.css">
+<link rel="stylesheet" href="../assets/css/responsive.css">
+<link rel="stylesheet" href="../assets/css/brand-green.css">
+<script src="../assets/vendor/lucide/lucide-subset.js" defer></script>
+<link rel="stylesheet" href="../assets/css/ux-polish.css">
+</head><body>
+<div style="min-height:100vh; display:grid; place-items:center; padding:24px; text-align:center;">
+  <div style="max-width:440px; width:100%;">
+    <div class="brand-wordmark" style="justify-content:center;margin:0 auto 16px;font-size:2rem;" aria-label="FlexiCash"><span class="brand-flexi">Flexi</span><span class="brand-cash">Cash</span></div>
+    <h1 id="title">Connexion en cours...</h1>
+    <p class="muted" id="mobile-note" style="margin:10px auto 0;max-width:34ch;">Sur téléphone, cette vérification peut prendre jusqu’à 30 secondes. Gardez cette page ouverte.</p>
+    <div class="stack mt-24" style="--gap:12px; text-align:left; max-width:340px; margin:24px auto 0;" id="steps">
+      <div class="row gap-12"><span class="dot info" id="step1"></span> Vérification du retour Google</div>
+      <div class="row gap-12"><span class="dot info" id="step2"></span> Création de votre session</div>
+      <div class="row gap-12" id="step3"><span class="dot info"></span> Préparation de votre espace</div>
+    </div>
+    <div class="progress mt-24"><span style="width:5%" id="prog"></span></div>
+    <div id="err" style="display:none; margin-top:20px;">
+      <p class="muted" id="err-msg">La connexion sécurisée n’a pas pu être finalisée.</p>
+      <p class="muted" id="err-help" style="font-size:.92rem;margin-top:10px;"></p>
+      <p id="err-code" style="font-size:.78rem;color:var(--muted);margin-top:8px;"></p>
+      <div class="row gap-8" style="justify-content:center;flex-wrap:wrap;">
+        <button type="button" class="btn btn-primary mt-16" id="err-retry">Réessayer ici</button>
+        <button type="button" class="btn btn-ghost mt-16" id="err-restart">Recommencer avec Google</button>
+      </div>
+      <div style="margin-top:12px;"><a class="btn-link" href="login.html">Retour à la page de connexion</a></div>
+    </div>
+  </div>
+</div>
+<script type="module">
+import "../assets/js/app.js";
+import { authService, redirectAfterAuth } from "../assets/js/services/auth-service.js";
+import { completeAuthRedirect, getSupabase, clearStalePkceVerifier } from "../assets/js/services/supabase-client.js";
+
+const prog = document.getElementById("prog");
+const retryButton = document.getElementById("err-retry");
+const restartButton = document.getElementById("err-restart");
+let running = false;
+
+const setProg = (width) => { if (prog) prog.style.width = `${width}%`; };
+const markDone = (id) => document.getElementById(id)?.classList.replace("info", "success");
+
+function cleanUrl() {
+  try { history.replaceState(null, "", location.pathname); } catch {}
+}
+
+function rememberDiagnostic(error) {
+  try {
+    sessionStorage.setItem("fx.auth.last_error", JSON.stringify({
+      code: String(error?.code || "unknown").slice(0, 100),
+      at: new Date().toISOString(),
+      online: navigator.onLine,
+      browser: navigator.userAgent.slice(0, 240),
+    }));
+  } catch {}
+}
+
+function friendlyError(error, hasCode) {
+  const code = String(error?.code || "auth_redirect_failed").toLowerCase();
+  const text = `${code} ${error?.message || ""}`.toLowerCase();
+
+  if (code.includes("access_denied")) return {
+    message: "La connexion Google a été annulée.",
+    help: "Recommencez puis acceptez la connexion à FlexiCash.",
+  };
+  if (code === "pkce_context_missing" || text.includes("code verifier") || text.includes("bad_code_verifier")) return {
+    message: "Le retour Google ne s’est pas ouvert dans le même navigateur.",
+    help: "Recommencez dans Safari uniquement ou Chrome uniquement. N’ouvrez pas Google dans une autre application et ne passez pas d’un navigateur à l’autre.",
+  };
+  if (code.includes("expired") || text.includes("flow state") || text.includes("not found")) return {
+    message: "Le lien temporaire de connexion a expiré.",
+    help: "Recommencez la connexion Google depuis le début.",
+  };
+  if (code === "supabase_client_unavailable" || text.includes("load_timeout") || text.includes("network") || !navigator.onLine) return {
+    message: "Le service sécurisé n’a pas pu être chargé sur ce téléphone.",
+    help: "Vérifiez Internet, désactivez temporairement un bloqueur de contenu ou un VPN, puis réessayez.",
+  };
+  if (code === "auth_redirect_missing_code" || !hasCode) return {
+    message: "Cette page ne contient plus le lien temporaire envoyé par Google.",
+    help: "Le bouton « Réessayer » ne peut pas restaurer ce lien. Recommencez avec Google.",
+  };
+  if (code === "auth_session_timeout") return {
+    message: "La connexion a pris trop de temps sur ce téléphone.",
+    help: "Réessayez ici une fois. Si le message revient, recommencez avec Google sans fermer la page.",
+  };
+  return {
+    message: "La connexion sécurisée n’a pas pu être finalisée.",
+    help: "Réessayez ici. Si le problème continue, recommencez avec Google dans le même navigateur.",
+  };
+}
+
+function showError(error, hasCode = false) {
+  const copy = friendlyError(error, hasCode);
+  document.getElementById("title").textContent = "Connexion impossible";
+  document.getElementById("mobile-note").style.display = "none";
+  document.getElementById("steps").style.display = "none";
+  document.querySelector(".progress").style.display = "none";
+  document.getElementById("err-msg").textContent = copy.message;
+  document.getElementById("err-help").textContent = copy.help;
+  document.getElementById("err-code").textContent = `Code diagnostic : ${String(error?.code || "AUTH-UNKNOWN").slice(0, 80)}`;
+  document.getElementById("err").style.display = "block";
+  retryButton.hidden = !hasCode;
+  rememberDiagnostic(error);
+}
+
+function showLoading() {
+  document.getElementById("title").textContent = "Connexion en cours...";
+  document.getElementById("mobile-note").style.display = "block";
+  document.getElementById("steps").style.display = "flex";
+  document.querySelector(".progress").style.display = "block";
+  document.getElementById("err").style.display = "none";
+  setProg(20);
+}
+
+async function finalizeConnection() {
+  if (running) return;
+  running = true;
+  retryButton.disabled = true;
+  restartButton.disabled = true;
+  showLoading();
+
+  try {
+    if (!authService.isConfigured()) {
+      showError({ code: "supabase_not_configured" }, false);
+      return;
+    }
+
+    setProg(35);
+    const completed = await completeAuthRedirect({ timeoutMs: 30000 });
+    if (!completed.session) {
+      if (completed.stage === "provider") cleanUrl();
+      showError(completed.error || { code: "auth_redirect_failed" }, completed.hasCode);
+      return;
+    }
+
+    markDone("step1");
+    markDone("step2");
+    setProg(70);
+
+    const sb = await getSupabase();
+    const { data: userData, error: userError } = sb
+      ? await sb.auth.getUser()
+      : { data: null, error: new Error("supabase_unavailable") };
+    if (userError || !userData?.user) {
+      showError({ code: "authenticated_user_unavailable", message: userError?.message }, true);
+      return;
+    }
+
+    cleanUrl();
+    setProg(88);
+    const { data: profile } = await authService.getProfile();
+    const user = await authService.getUser();
+    const adminIntent = (() => { try { return sessionStorage.getItem("fx.admin.login_intent") === "1"; } catch { return false; } })();
+    if (adminIntent) {
+      try { sessionStorage.removeItem("fx.admin.login_intent"); } catch {}
+      if (profile?.role !== "admin" || profile?.status !== "active") {
+        await authService.logout();
+        location.replace("../admin/login.html?reason=not_admin");
+        return;
+      }
+    }
+    const designerIntent = (() => { try { return sessionStorage.getItem("fx.designer.login_intent") === "1"; } catch { return false; } })();
+    if (designerIntent) {
+      try { sessionStorage.removeItem("fx.designer.login_intent"); } catch {}
+      const authorized = profile?.status === "active" && (profile?.is_designer === true || profile?.role === "admin");
+      if (!authorized) {
+        await authService.logout();
+        location.replace("../designer/login.html?reason=not_designer");
+        return;
+      }
+      location.replace("../designer/dashboard.html");
+      setProg(100);
+      return;
+    }
+    const redirected = await redirectAfterAuth(profile, user);
+    if (!redirected.ok) {
+      showError({ code: "account_state_unavailable" }, false);
+      return;
+    }
+    setProg(100);
+  } catch (error) {
+    showError({ code: error?.code || "auth_callback_exception", message: error?.message }, Boolean(new URLSearchParams(location.search).get("code")));
+  } finally {
+    running = false;
+    retryButton.disabled = false;
+    restartButton.disabled = false;
+  }
+}
+
+retryButton.addEventListener("click", finalizeConnection);
+restartButton.addEventListener("click", () => {
+  clearStalePkceVerifier();
+  cleanUrl();
+  location.replace("login.html?oauth=restart");
+});
+
+finalizeConnection();
+</script></body></html>
