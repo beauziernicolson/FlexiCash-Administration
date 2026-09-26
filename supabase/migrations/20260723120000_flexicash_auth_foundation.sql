@@ -32,6 +32,8 @@ create table if not exists public.profiles (
 
 comment on table public.profiles is 'Profil applicatif FlexiCash, un enregistrement par utilisateur auth.users.';
 
+-- Adaptation d'une table profiles préexistante : on s'assure que toutes les
+-- colonnes attendues existent (no-op si la table vient d'être créée ci-dessus).
 alter table public.profiles add column if not exists email      text;
 alter table public.profiles add column if not exists full_name  text;
 alter table public.profiles add column if not exists avatar_url text;
@@ -41,6 +43,7 @@ alter table public.profiles add column if not exists status     text;
 alter table public.profiles add column if not exists created_at timestamptz not null default now();
 alter table public.profiles add column if not exists updated_at timestamptz not null default now();
 
+-- Valeurs par défaut + remplissage + NOT NULL pour role / status
 alter table public.profiles alter column role   set default 'client';
 alter table public.profiles alter column status set default 'active';
 update public.profiles set role   = 'client' where role   is null;
@@ -48,6 +51,9 @@ update public.profiles set status = 'active' where status is null;
 alter table public.profiles alter column role   set not null;
 alter table public.profiles alter column status set not null;
 
+-- Contraintes (ajout idempotent, après garantie d'existence des colonnes).
+-- Les valeurs existantes hors liste sont normalisées au préalable pour éviter
+-- un échec d'ajout de contrainte.
 update public.profiles set role   = 'client' where role   not in ('client', 'admin');
 update public.profiles set status = 'active' where status not in ('active', 'suspended');
 
@@ -65,6 +71,11 @@ begin
 end
 $$;
 
+-- ----------------------------------------------------------------------------
+-- 2. is_admin() — vérification admin côté base, SECURITY DEFINER.
+--    Contourne la RLS de profiles lors du test => pas de récursion dans les
+--    politiques qui l'utilisent.
+-- ----------------------------------------------------------------------------
 create or replace function public.is_admin()
 returns boolean
 language sql
@@ -82,6 +93,9 @@ $$;
 
 comment on function public.is_admin() is 'Retourne true si l''utilisateur courant a le rôle admin (vérifié en base).';
 
+-- ----------------------------------------------------------------------------
+-- 3. updated_at automatique
+-- ----------------------------------------------------------------------------
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
@@ -99,6 +113,12 @@ create trigger profiles_set_updated_at
   for each row
   execute function public.set_updated_at();
 
+-- ----------------------------------------------------------------------------
+-- 4. Protection des champs privilégiés.
+--    Un utilisateur non-admin ne peut jamais modifier role / status / id /
+--    email / created_at : ces colonnes sont forcées à leur valeur précédente.
+--    Un admin (is_admin) conserve le droit de les modifier.
+-- ----------------------------------------------------------------------------
 create or replace function public.protect_profile_fields()
 returns trigger
 language plpgsql
@@ -110,7 +130,7 @@ begin
     new.id         := old.id;
     new.role       := old.role;
     new.status     := old.status;
-    new.email      := old.email;
+    new.email      := old.email;       -- l'email est géré par l'authentification
     new.created_at := old.created_at;
   end if;
   return new;
@@ -123,6 +143,9 @@ create trigger profiles_protect_fields
   for each row
   execute function public.protect_profile_fields();
 
+-- ----------------------------------------------------------------------------
+-- 5. Création automatique du profil à l'inscription (métadonnées Google).
+-- ----------------------------------------------------------------------------
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -155,20 +178,27 @@ create trigger on_auth_user_created
   for each row
   execute function public.handle_new_user();
 
+-- ----------------------------------------------------------------------------
+-- 6. Row Level Security
+-- ----------------------------------------------------------------------------
 alter table public.profiles enable row level security;
 
+-- Un utilisateur lit son propre profil
 drop policy if exists profiles_select_own on public.profiles;
 create policy profiles_select_own on public.profiles
   for select
   to authenticated
   using (auth.uid() = id);
 
+-- Un admin lit tous les profils (nécessaire à l'administration)
 drop policy if exists profiles_select_admin on public.profiles;
 create policy profiles_select_admin on public.profiles
   for select
   to authenticated
   using (public.is_admin());
 
+-- Un utilisateur modifie son propre profil.
+-- Les colonnes privilégiées sont neutralisées par protect_profile_fields().
 drop policy if exists profiles_update_own on public.profiles;
 create policy profiles_update_own on public.profiles
   for update
@@ -176,6 +206,7 @@ create policy profiles_update_own on public.profiles
   using (auth.uid() = id)
   with check (auth.uid() = id);
 
+-- Un admin peut mettre à jour les profils
 drop policy if exists profiles_update_admin on public.profiles;
 create policy profiles_update_admin on public.profiles
   for update
@@ -183,9 +214,19 @@ create policy profiles_update_admin on public.profiles
   using (public.is_admin())
   with check (public.is_admin());
 
+-- Aucune politique INSERT/DELETE côté client : les profils sont créés par le
+-- trigger handle_new_user() (SECURITY DEFINER) et supprimés en cascade avec
+-- auth.users.
+
+-- ----------------------------------------------------------------------------
+-- 7. Privilèges de table (RLS reste la barrière de sécurité effective)
+-- ----------------------------------------------------------------------------
 revoke all on public.profiles from anon;
 grant select, update on public.profiles to authenticated;
 
+-- ----------------------------------------------------------------------------
+-- 8. Backfill : profils manquants pour les utilisateurs Auth existants
+-- ----------------------------------------------------------------------------
 insert into public.profiles (id, email, full_name, avatar_url)
 select
   u.id,
