@@ -3,8 +3,6 @@ import { dirname, extname, join, normalize, relative, resolve } from 'node:path'
 
 const root = process.cwd();
 
-// Ce dépôt n'est valide que s'il représente réellement le produit Web complet.
-// Un sous-ensemble de pages de démonstration doit échouer, même s'il est propre.
 const requiredPaths = [
   'README.md',
   'audit-baseline.json',
@@ -111,8 +109,6 @@ function walk(dir) {
       if (pattern.test(text)) failures.push(`possible secret in ${rel} (${pattern})`);
     }
 
-    // Le scanner lui-même contient les motifs interdits sous forme de regex.
-    // On contrôle uniquement le runtime produit, pas scripts/ ni les docs d'audit.
     const isAuditTooling = rel.startsWith('scripts/');
     if (!isAuditTooling && runtimeNativeScanExt.test(name)) {
       for (const [label, pattern] of nativeRuntimePatterns) {
@@ -125,7 +121,7 @@ walk(root);
 
 function localTarget(sourceFile, rawRef) {
   const ref = rawRef.trim();
-  if (!ref || ref.startsWith('#')) return null;
+  if (!ref || ref.startsWith('#') || ref.includes('${')) return null;
   if (/^(?:https?:|mailto:|tel:|data:|javascript:|\/\/)/i.test(ref)) return null;
   const clean = ref.split('#')[0].split('?')[0];
   if (!clean) return null;
