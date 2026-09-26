@@ -1,0 +1,672 @@
+<!doctype html><html lang="fr"><head>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Paiement — FlexiCash</title>
+<meta name="robots" content="noindex, nofollow"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&family=JetBrains+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/reset.css"><link rel="stylesheet" href="../assets/css/variables.css">
+<link rel="stylesheet" href="../assets/css/components.css">
+<link rel="stylesheet" href="../assets/css/auth.css">
+<link rel="stylesheet" href="../assets/css/checkout.css">
+<link rel="stylesheet" href="../assets/css/responsive.css">
+<link rel="stylesheet" href="../assets/css/brand-green.css">
+<script src="../assets/vendor/lucide/lucide-subset.js" defer></script>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+</head><body>
+<div class="checkout-shell">
+  <div class="checkout-card">
+    <div class="checkout-logo"><span><span class="brand-flexi">Flexi</span><span class="brand-cash">Cash</span></span></div>
+    <div id="checkout-body"><div class="checkout-state"><div class="spinner"></div><p>Chargement du paiement…</p></div></div>
+    <div class="checkout-secured"><i data-lucide="shield-check" aria-hidden="true" style="width:14px;height:14px;"></i> Sécurisé par FlexiCash</div>
+  </div>
+</div>
+<script type="module">
+import "../assets/js/theme.js";
+import { refreshLucideIcons, startLucideAutoHydration } from "../assets/js/services/lucide-service.js";
+import { startConnectionBanner } from "../assets/js/services/connection-banner.js";
+import { getSession } from "../assets/js/services/supabase-client.js";
+import { authService } from "../assets/js/services/auth-service.js";
+import { attachTurnstile } from "../assets/js/services/turnstile-service.js";
+import { escapeHtml, toast } from "../assets/js/components.js";
+import { hostedCheckoutService } from "../assets/js/services/hosted-checkout-service.js";
+import { financialProfileService } from "../assets/js/services/financial-profile-service.js";
+
+startLucideAutoHydration();
+startConnectionBanner();
+
+const body = document.getElementById("checkout-body");
+const params = new URLSearchParams(location.search);
+const sessionToken = (params.get("session") || "").trim();
+
+function render(html) {
+  body.innerHTML = html;
+  refreshLucideIcons(body);
+}
+
+function fmtAmount(amount, currency) {
+  const n = Number(amount || 0);
+  const formatted = n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${formatted} ${escapeHtml(currency || "HTG")}`;
+}
+
+function renderState({ icon, title, message, code = null }) {
+  render(`
+    <div class="checkout-state">
+      <i data-lucide="${icon}" aria-hidden="true" style="width:38px;height:38px;color:var(--text-muted);margin-bottom:12px;"></i>
+      <h2>${escapeHtml(title)}</h2>
+      <p>${escapeHtml(message)}</p>
+      ${code ? `<div class="checkout-error-code">${escapeHtml(code)}</div>` : ""}
+    </div>`);
+}
+
+function renderLoading(message = "Chargement du paiement…") {
+  render(`<div class="checkout-state"><div class="spinner"></div><p>${escapeHtml(message)}</p></div>`);
+}
+
+function merchantHeader(ctx) {
+  return `
+    <p class="checkout-merchant">Paiement à <strong>${escapeHtml(ctx.merchantName || "Marchand FlexiCash")}</strong></p>
+    <div class="checkout-amount">${fmtAmount(ctx.amount, ctx.currency)}</div>
+    ${ctx.projectName ? `<p class="checkout-project">${escapeHtml(ctx.projectName)}</p>` : ""}`;
+}
+
+async function goReturnOrClose(outcome, ctx, fallbackMessage) {
+  const result = await hostedCheckoutService.getReturnContext(sessionToken, outcome).catch(() => null);
+  if (result?.ok && result.available && result.data.returnUrl) {
+    location.replace(result.data.returnUrl);
+    return;
+  }
+  renderState({ icon: "circle-check", title: "Terminé", message: fallbackMessage || "Vous pouvez fermer cette fenêtre." });
+}
+
+function checkoutNext() {
+  return `app/checkout.html${location.search || ""}`;
+}
+
+function showInvalidLink() {
+  renderState({ icon: "circle-alert", title: "Lien de paiement invalide", message: "Ce lien de paiement n’est pas valide. Retournez sur le site du marchand pour réessayer." });
+}
+
+function showExpired(ctx = null, autoReturn = false) {
+  renderTerminalWithReturn({ icon: "clock", title: "Paiement expiré", message: "Ce lien de paiement a expiré. Aucun paiement supplémentaire n’est nécessaire.", outcome: "cancelled", ctx, autoReturn });
+}
+
+function renderTerminalWithReturn({ icon, title, message, outcome, ctx = null, autoReturn = false }) {
+  render(`
+    <div class="checkout-state">
+      <i data-lucide="${icon}" aria-hidden="true" style="width:38px;height:38px;color:var(--text-muted);margin-bottom:12px;"></i>
+      <h2>${escapeHtml(title)}</h2>
+      ${ctx ? merchantHeader(ctx) : ""}
+      <p>${escapeHtml(message)}</p>
+      <button class="btn btn-primary btn-block mt-16" id="checkout-return-btn">Retour au marchand</button>
+    </div>`);
+  const returnAction = () => goReturnOrClose(outcome, ctx, "Vous pouvez fermer cette fenêtre.");
+  document.getElementById("checkout-return-btn")?.addEventListener("click", returnAction);
+  if (autoReturn) setTimeout(returnAction, 900);
+}
+
+function showCancelled(ctx, autoReturn = false) {
+  renderTerminalWithReturn({ icon: "circle-x", title: "Paiement annulé", message: "Ce paiement a bien été annulé. Aucun montant ne sera débité.", outcome: "cancelled", ctx, autoReturn });
+}
+
+function showFailed(ctx, autoReturn = false) {
+  renderTerminalWithReturn({ icon: "circle-alert", title: "Paiement échoué", message: "Ce paiement n’a pas abouti. Aucun nouveau paiement n’est nécessaire sur ce lien.", outcome: "error", ctx, autoReturn });
+}
+
+function showVerification(ctx) {
+  render(`
+    <div class="checkout-state">
+      <i data-lucide="scan-search" aria-hidden="true" style="width:38px;height:38px;color:var(--text-muted);margin-bottom:12px;"></i>
+      <h2>Vérification du paiement en cours</h2>
+      ${ctx ? merchantHeader(ctx) : ""}
+      <p>Nous vérifions l’état de cette transaction. Aucun nouveau paiement n’est nécessaire pour le moment.</p>
+      <button class="btn btn-ghost mt-16" id="checkout-refresh-state-btn"><i data-lucide="refresh-cw" aria-hidden="true"></i> Vérifier à nouveau</button>
+    </div>`);
+  document.getElementById("checkout-refresh-state-btn")?.addEventListener("click", () => refreshServerState(ctx));
+}
+
+function showProductionLocked() {
+  renderState({ icon: "triangle-alert", title: "Paiements indisponibles", message: "Les paiements réels sont temporairement indisponibles." });
+}
+
+function showPayerProfileUnavailable(message = "Aucun profil Personnel ou Professionnel actif n’est disponible pour ce paiement.") {
+  renderState({
+    icon: "wallet-cards",
+    title: "Profil de paiement indisponible",
+    message,
+  });
+}
+
+function showAlreadyPaid(ctx, autoReturn = false) {
+  render(`
+    <div class="checkout-state">
+      <i data-lucide="circle-check" aria-hidden="true" style="width:38px;height:38px;color:var(--success);margin-bottom:12px;"></i>
+      <h2>Paiement déjà effectué</h2>
+      ${merchantHeader(ctx)}
+      <p>Ce paiement a déjà été réglé.</p>
+      <button class="btn btn-primary btn-block mt-16" id="checkout-return-btn">Retour au marchand</button>
+    </div>`);
+  const returnAction = () => goReturnOrClose("success", ctx, "Vous pouvez fermer cette fenêtre.");
+  document.getElementById("checkout-return-btn")?.addEventListener("click", returnAction);
+  if (autoReturn) setTimeout(returnAction, 900);
+}
+
+function showTemporaryError(message = "Le paiement est momentanément indisponible. Réessayez dans un instant.") {
+  render(`
+    <div class="checkout-state">
+      <i data-lucide="circle-alert" aria-hidden="true" style="width:38px;height:38px;color:var(--text-muted);margin-bottom:12px;"></i>
+      <h2>Erreur temporaire</h2>
+      <p>${escapeHtml(message)}</p>
+      <button class="btn btn-ghost mt-16" id="checkout-retry-btn"><i data-lucide="refresh-cw" aria-hidden="true"></i> Réessayer</button>
+    </div>`);
+  document.getElementById("checkout-retry-btn")?.addEventListener("click", () => location.reload());
+}
+
+function showLoginRequired(ctx) {
+  render(`
+    <div>
+      ${merchantHeader(ctx)}
+      <form id="checkout-login-form" class="auth-form" style="margin-top:0;gap:14px;">
+        <div class="field"><label for="checkout-email">Adresse e-mail</label><input class="input" id="checkout-email" type="email" autocomplete="email" required placeholder="vous@exemple.ht"/></div>
+        <div class="field"><label for="checkout-password">Mot de passe</label><input class="input" id="checkout-password" type="password" autocomplete="current-password" required placeholder="Votre mot de passe"/></div>
+        <div id="checkout-turnstile"></div>
+        <p class="muted" id="checkout-turnstile-state" style="font-size:.78rem;" hidden></p>
+        <button class="btn btn-primary btn-block lg" id="checkout-login-submit" type="submit">Se connecter et continuer</button>
+      </form>
+      <div class="auth-sep">ou</div>
+      <div class="auth-oauth"><button class="btn btn-ghost btn-block" type="button" id="checkout-google-btn">Continuer avec Google</button></div>
+    </div>`);
+
+  const form = document.getElementById("checkout-login-form");
+  const submitBtn = document.getElementById("checkout-login-submit");
+  const turnstileState = document.getElementById("checkout-turnstile-state");
+  let turnstile = null;
+  attachTurnstile("checkout-turnstile", (etat) => {
+    if (etat === "chargement" || etat === "verification") {
+      turnstileState.hidden = false;
+      turnstileState.textContent = "Vérification de sécurité en cours…";
+      submitBtn.disabled = true;
+    } else if (etat === "prete") {
+      turnstileState.hidden = true;
+      submitBtn.disabled = false;
+    } else if (etat === "echec") {
+      turnstileState.hidden = false;
+      turnstileState.textContent = "La vérification de sécurité n’a pas pu se charger (connexion faible). Vous pouvez réessayer d’envoyer le formulaire.";
+      submitBtn.disabled = false;
+    }
+  }).then((c) => { turnstile = c; });
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    submitBtn.disabled = true;
+    const email = document.getElementById("checkout-email").value;
+    const password = document.getElementById("checkout-password").value;
+    const result = await authService.login(email, password, turnstile?.getToken?.());
+    turnstile?.reset?.();
+    if (!result.ok) {
+      submitBtn.disabled = false;
+      toast({ type: "error", title: "Connexion impossible", message: result.error, timeout: 9000 });
+      return;
+    }
+    renderLoading("Connexion réussie, chargement du paiement…");
+    await proceedAuthenticated(ctx);
+  });
+
+  const googleBtn = document.getElementById("checkout-google-btn");
+  googleBtn?.addEventListener("click", async () => {
+    if (googleBtn.disabled) return;
+    if (!authService.isConfigured()) {
+      toast({ type: "error", title: "Connexion Google indisponible", message: "La connexion Google est temporairement indisponible." });
+      return;
+    }
+    googleBtn.disabled = true;
+    googleBtn.textContent = "Connexion…";
+    const result = await authService.signInWithGoogle(checkoutNext());
+    if (!result.ok) {
+      googleBtn.disabled = false;
+      googleBtn.textContent = "Continuer avec Google";
+      toast({ type: "error", title: "Connexion Google", message: result.error });
+      return;
+    }
+  });
+}
+
+function payerProfileLabel(profile) {
+  return profile?.profile_type === "professional" ? "Professionnel" : "Personnel";
+}
+
+function payerProfileBalance(profile) {
+  return Number(profile?.wallet?.available_balance ?? 0);
+}
+
+function eligiblePayerProfiles(ctx, profiles = []) {
+  const expectedEnvironment = ctx?.environment === "sandbox" ? "demo" : "production";
+  return profiles.filter((profile) =>
+    ["personal", "professional"].includes(profile?.profile_type)
+    && profile?.status === "active"
+    && profile?.financial_environment === expectedEnvironment
+  );
+}
+
+async function loadPayerSourceOptions(ctx, profile) {
+  const paymentCurrency = String(ctx?.currency || "HTG").toUpperCase();
+  const result = await hostedCheckoutService.getSourceQuote(
+    sessionToken,
+    profile.profile_id,
+    paymentCurrency
+  );
+
+  if (!result?.ok || !result?.data) {
+    showPayerProfileUnavailable(
+      `Aucun portefeuille ${paymentCurrency} compatible n’est disponible sur ce profil.`
+    );
+    return null;
+  }
+
+  return {
+    ...ctx,
+    payerProfileId: profile.profile_id,
+    payerProfileType: profile.profile_type,
+    payerSourceOptions: [result.data],
+    payerCurrency: paymentCurrency,
+  };
+}
+
+async function preparePayerContext(ctx, preferredProfileId = null) {
+  const profilesResult = await financialProfileService.fetchProfiles();
+  if (!profilesResult.ok) {
+    showTemporaryError(profilesResult.error || "Impossible de charger vos profils FlexiCash.");
+    return null;
+  }
+
+  const profiles = eligiblePayerProfiles(ctx, profilesResult.data || []);
+  if (!profiles.length) {
+    showPayerProfileUnavailable();
+    return null;
+  }
+
+  const activeType = financialProfileService.getActiveProfileType();
+  const selected = profiles.find((profile) => profile.profile_id === preferredProfileId)
+    || profiles.find((profile) => profile.profile_type === activeType)
+    || profiles.find((profile) => profile.profile_type === "personal")
+    || profiles[0];
+
+  const withSources = await loadPayerSourceOptions(ctx, selected);
+  if (!withSources) return null;
+
+  return {
+    ...withSources,
+    payerProfiles: profiles,
+  };
+}
+
+function sourceOptionLabel(option) {
+  return option?.sourceCurrency === "USD" ? "Dollars (USD)" : "Gourdes (HTG)";
+}
+
+function sourceOptionDetail(option) {
+  if (!option) return "";
+  const balance = fmtAmount(option.sourceAvailableBalance, option.sourceCurrency);
+  const required = fmtAmount(option.sourceAmount, option.sourceCurrency);
+  return option.canPay
+    ? `${balance} disponibles · ${required} requis`
+    : `${balance} disponibles · ${required} requis · solde insuffisant`;
+}
+
+function showSummary(ctx) {
+  const profiles = Array.isArray(ctx?.payerProfiles) ? ctx.payerProfiles : [];
+  const selectedProfile = profiles.find((profile) => profile.profile_id === ctx?.payerProfileId) || profiles[0] || null;
+  const options = Array.isArray(ctx?.payerSourceOptions) ? ctx.payerSourceOptions : [];
+  const selectedSource = options.find((option) => option.sourceCurrency === ctx?.payerCurrency) || options[0] || null;
+
+  const profileSelector = profiles.length > 1
+    ? `<div class="checkout-profile-picker">
+        <div class="checkout-profile-title">Profil à débiter</div>
+        <div class="checkout-profile-options">
+          ${profiles.map((profile) => `
+            <label class="checkout-profile-option ${profile.profile_id === selectedProfile?.profile_id ? "is-selected" : ""}">
+              <input type="radio" name="checkout-payer-profile" value="${escapeHtml(profile.profile_id)}" ${profile.profile_id === selectedProfile?.profile_id ? "checked" : ""}>
+              <span class="checkout-profile-copy">
+                <strong>${escapeHtml(payerProfileLabel(profile))}</strong>
+                <span>Le paiement utilisera uniquement le wallet ${escapeHtml(ctx.currency || "HTG")} de ce profil.</span>
+              </span>
+            </label>`).join("")}
+        </div>
+      </div>`
+    : selectedProfile
+      ? `<div class="checkout-profile-single">Profil : <strong>${escapeHtml(payerProfileLabel(selectedProfile))}</strong></div>`
+      : "";
+
+  const sourceSelector = `
+    <div class="checkout-profile-picker">
+      <div class="checkout-profile-title">Devise débitée</div>
+      <div class="checkout-profile-options">
+        ${options.map((option) => `
+          <label class="checkout-profile-option ${option.sourceCurrency === selectedSource?.sourceCurrency ? "is-selected" : ""} ${option.canPay ? "" : "is-disabled"}">
+            <input type="radio"
+                   name="checkout-payer-currency"
+                   value="${escapeHtml(option.sourceCurrency)}"
+                   ${option.sourceCurrency === selectedSource?.sourceCurrency ? "checked" : ""}
+                   ${option.canPay ? "" : "disabled"}>
+            <span class="checkout-profile-copy">
+              <strong>${escapeHtml(sourceOptionLabel(option))}</strong>
+              <span>${escapeHtml(sourceOptionDetail(option, ctx))}</span>
+            </span>
+          </label>`).join("")}
+      </div>
+      <div class="checkout-currency-note">La devise du paiement est fixe : ${escapeHtml(ctx.currency || "HTG")}. FlexiCash ne convertit pas automatiquement pendant un achat.</div>
+      ${selectedSource?.canPay ? "" : `<div class="alert alert-warning mt-8">
+        <strong>Solde ${escapeHtml(ctx.currency || "HTG")} insuffisant.</strong><br>
+        Convertissez d’abord vos fonds dans FlexiCash, puis revenez sur cet onglet pour payer.
+        <a class="btn btn-ghost btn-block mt-8" href="/app/dashboard.html" target="_blank" rel="noopener">Ouvrir FlexiCash pour convertir</a>
+      </div>`}
+    </div>`;
+
+  const canPay = Boolean(selectedSource?.canPay);
+
+  render(`
+    <div>
+      ${merchantHeader(ctx)}
+      ${profileSelector}
+      ${sourceSelector}
+      <button class="btn btn-primary btn-block lg" id="checkout-pay-btn" ${canPay ? "" : "disabled"}>Payer ${fmtAmount(ctx.amount, ctx.currency)}</button>
+      <button class="btn btn-ghost btn-block mt-8" id="checkout-cancel-btn">Annuler</button>
+    </div>`);
+
+  document.querySelectorAll('input[name="checkout-payer-profile"]').forEach((input) => {
+    input.addEventListener("change", async (event) => {
+      const chosen = profiles.find((profile) => profile.profile_id === event.currentTarget.value);
+      if (!chosen) return;
+      renderLoading("Chargement des portefeuilles…");
+      const next = await loadPayerSourceOptions(ctx, chosen);
+      if (next) showSummary({ ...next, payerProfiles: profiles });
+    });
+  });
+
+  document.querySelectorAll('input[name="checkout-payer-currency"]').forEach((input) => {
+    input.addEventListener("change", (event) => {
+      ctx.payerCurrency = String(event.currentTarget.value || "HTG").toUpperCase();
+      showSummary(ctx);
+    });
+  });
+
+  document.getElementById("checkout-pay-btn")?.addEventListener("click", () => {
+    if (!canPay) return;
+    showPinStep(ctx);
+  });
+  document.getElementById("checkout-cancel-btn")?.addEventListener("click", (event) => cancelCheckout(ctx, event.currentTarget));
+}
+
+function showPinStep(ctx, notice = null) {
+  const options = Array.isArray(ctx?.payerSourceOptions) ? ctx.payerSourceOptions : [];
+  const selectedSource = options.find((option) => option.sourceCurrency === ctx?.payerCurrency) || options[0] || null;
+  const fxNote = "";
+
+  render(`
+    <div>
+      ${merchantHeader(ctx)}
+      <div class="checkout-profile-single">Débit : <strong>${escapeHtml(ctx?.payerProfileType === "professional" ? "Professionnel" : "Personnel")} · ${escapeHtml(ctx?.payerCurrency || "HTG")}</strong></div>
+      ${fxNote}
+      <form id="checkout-pin-form">
+        <div class="field">
+          <label for="checkout-pin">PIN de transaction</label>
+          <input class="input checkout-pin-input" id="checkout-pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off" maxlength="6" required placeholder="••••"/>
+        </div>
+        ${notice ? `<p class="muted" style="color:var(--danger);font-size:.84rem;text-align:center;margin:4px 0 0;">${escapeHtml(notice)}</p>` : ""}
+        <button class="btn btn-primary btn-block lg mt-16" id="checkout-pin-submit" type="submit">Payer ${fmtAmount(ctx.amount, ctx.currency)}</button>
+        <button class="btn btn-ghost btn-block mt-8" id="checkout-pin-back" type="button">Annuler</button>
+      </form>
+    </div>`);
+  const form = document.getElementById("checkout-pin-form");
+  const pinInput = document.getElementById("checkout-pin");
+  pinInput?.focus();
+  document.getElementById("checkout-pin-back")?.addEventListener("click", (event) => cancelCheckout(ctx, event.currentTarget));
+  form?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitPin(ctx, pinInput.value);
+  });
+}
+
+function showPinLocked(lockedUntil) {
+  const when = lockedUntil ? new Date(lockedUntil) : null;
+  const message = when && !Number.isNaN(when.getTime())
+    ? `Le PIN est temporairement verrouillé après plusieurs tentatives. Réessayez après ${when.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}.`
+    : "Le PIN est temporairement verrouillé après plusieurs tentatives. Réessayez plus tard.";
+  renderState({ icon: "lock", title: "PIN verrouillé", message });
+}
+
+let paying = false;
+let cancelling = false;
+let cancellationAttemptKey = null;
+
+const RECONCILIATION_ERRORS = new Set([
+  "payment_reconciliation_required",
+  "platform_payment_in_progress_requires_reconciliation",
+]);
+
+function renderKnownServerState(ctx, { autoReturn = false } = {}) {
+  const paymentStatus = String(ctx?.paymentStatus || "").toLowerCase();
+  const checkoutStatus = String(ctx?.checkoutStatus || "").toLowerCase();
+  if (["settled", "refunded"].includes(paymentStatus) || checkoutStatus === "completed") {
+    showAlreadyPaid(ctx, autoReturn);
+    return true;
+  }
+  if (checkoutStatus === "expired") {
+    showExpired(ctx, autoReturn);
+    return true;
+  }
+  if (checkoutStatus === "cancelled" || paymentStatus === "cancelled") {
+    showCancelled(ctx, autoReturn);
+    return true;
+  }
+  if (checkoutStatus === "failed" || paymentStatus === "failed") {
+    showFailed(ctx, autoReturn);
+    return true;
+  }
+  return false;
+}
+
+async function refreshServerState(ctx, { autoReturn = false } = {}) {
+  renderLoading("Vérification de l’état du paiement…");
+  const fresh = await hostedCheckoutService.fetchAuthenticatedContext(sessionToken);
+  if (!fresh.ok) {
+    showVerification(ctx);
+    return null;
+  }
+  if (renderKnownServerState(fresh.data, { autoReturn })) return fresh.data;
+  if (fresh.data.canPay) {
+    const prepared = await preparePayerContext(fresh.data, ctx?.payerProfileId || null);
+    if (prepared) showSummary(prepared);
+  } else showVerification(fresh.data);
+  return fresh.data;
+}
+
+async function cancelCheckout(ctx, button) {
+  if (cancelling || paying) return;
+  cancelling = true;
+  if (!cancellationAttemptKey) cancellationAttemptKey = hostedCheckoutService.newIdempotencyKey();
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Annulation…";
+  }
+  document.getElementById("checkout-pay-btn")?.setAttribute("disabled", "");
+  document.getElementById("checkout-pin-submit")?.setAttribute("disabled", "");
+
+  const result = await hostedCheckoutService.cancel(sessionToken, cancellationAttemptKey);
+  cancelling = false;
+
+  if (result.ok) {
+    const serverCtx = { ...ctx, ...result.data };
+    cancellationAttemptKey = null;
+    if (renderKnownServerState(serverCtx, { autoReturn: true })) return;
+    showVerification(serverCtx);
+    return;
+  }
+
+  const fresh = await hostedCheckoutService.fetchAuthenticatedContext(sessionToken);
+  if (fresh.ok && renderKnownServerState(fresh.data, { autoReturn: true })) {
+    cancellationAttemptKey = null;
+    return;
+  }
+  if (RECONCILIATION_ERRORS.has(result.errorCode) || (fresh.ok && !fresh.data.canPay)) {
+    showVerification(fresh.ok ? fresh.data : ctx);
+    return;
+  }
+
+  render(`
+    <div class="checkout-state">
+      <i data-lucide="wifi-off" aria-hidden="true" style="width:38px;height:38px;color:var(--text-muted);margin-bottom:12px;"></i>
+      <h2>Annulation non confirmée</h2>
+      <p>La connexion a été interrompue. Vérifiez l’état du paiement avant de réessayer.</p>
+      <button class="btn btn-primary btn-block mt-16" id="checkout-cancel-retry-btn">Réessayer l’annulation</button>
+      <button class="btn btn-ghost btn-block mt-8" id="checkout-state-retry-btn">Vérifier l’état</button>
+    </div>`);
+  document.getElementById("checkout-cancel-retry-btn")?.addEventListener("click", (event) => cancelCheckout(ctx, event.currentTarget));
+  document.getElementById("checkout-state-retry-btn")?.addEventListener("click", () => refreshServerState(ctx));
+}
+
+async function submitPin(ctx, pin) {
+  if (paying || cancelling) return;
+  paying = true;
+  const submitBtn = document.getElementById("checkout-pin-submit");
+  if (submitBtn) submitBtn.disabled = true;
+  document.getElementById("checkout-pin-back")?.setAttribute("disabled", "");
+
+  if (!ctx?.payerProfileId) {
+    paying = false;
+    showPayerProfileUnavailable("Choisissez le profil FlexiCash à débiter avant de continuer.");
+    return;
+  }
+
+  const idempotencyKey = hostedCheckoutService.newIdempotencyKey();
+  const authResult = await hostedCheckoutService.authorizePin(
+    sessionToken,
+    ctx.payerProfileId,
+    pin,
+    idempotencyKey,
+    ctx?.payerCurrency || "HTG"
+  );
+
+  if (!authResult.ok) {
+    paying = false;
+    if (authResult.errorCode === "pin_locked") { showPinLocked(authResult.lockedUntil); return; }
+    if (authResult.errorCode === "production_locked") { showProductionLocked(); return; }
+    if (["professional_flexicash_account_required", "payer_profile_required", "payer_profile_not_available", "payer_wallet_not_available"].includes(authResult.errorCode)) { showPayerProfileUnavailable(authResult.error); return; }
+    if (["checkout_session_not_payable", "payment_not_payable"].includes(authResult.errorCode)) {
+      await reconcileAfterConflict(ctx);
+      return;
+    }
+    const suffix = Number.isFinite(authResult.remainingAttempts)
+      ? ` (${authResult.remainingAttempts} tentative${authResult.remainingAttempts > 1 ? "s" : ""} restante${authResult.remainingAttempts > 1 ? "s" : ""})`
+      : "";
+    showPinStep(ctx, `${authResult.error || "PIN incorrect."}${suffix}`);
+    return;
+  }
+
+  renderLoading("Traitement du paiement…");
+  const payResult = await hostedCheckoutService.pay(
+    sessionToken,
+    ctx.payerProfileId,
+    idempotencyKey,
+    authResult.data.authorizationToken,
+    ctx?.payerCurrency || "HTG",
+    authResult.data.fxAuthorizationToken || null,
+    authResult.data.fxRateId || null
+  );
+  paying = false;
+
+  if (!payResult.ok) {
+    if (payResult.errorCode === "production_locked") { showProductionLocked(); return; }
+    if (["professional_flexicash_account_required", "payer_profile_required", "payer_profile_not_available", "payer_wallet_not_available", "payment_already_paid_with_different_profile"].includes(payResult.errorCode)) { showPayerProfileUnavailable(payResult.error); return; }
+    if (["authorization_expired", "authorization_not_found", "authorization_already_used", "authorization_context_mismatch", "legacy_pin_authorization_disabled"].includes(payResult.errorCode)) {
+      showPinStep(ctx, "Confirmez de nouveau votre PIN.");
+      return;
+    }
+    if (["checkout_session_not_payable", "payment_not_payable", "payment_not_settled_after_pay"].includes(payResult.errorCode)) {
+      await reconcileAfterConflict(ctx);
+      return;
+    }
+    showPinStep(ctx, payResult.error || "Le paiement n’a pas abouti. Réessayez.");
+    return;
+  }
+
+  if (payResult.settled) {
+    await showSuccess(ctx, payResult.data);
+  } else {
+    showPinStep(ctx, "Le paiement n’a pas pu être confirmé. Réessayez.");
+  }
+}
+
+async function reconcileAfterConflict(ctx) {
+  const fresh = await hostedCheckoutService.fetchAuthenticatedContext(sessionToken);
+  if (!fresh.ok) { showTemporaryError(); return; }
+  if (renderKnownServerState(fresh.data)) return;
+  const prepared = await preparePayerContext(fresh.data, ctx?.payerProfileId || null);
+  if (prepared) showPinStep(prepared, "Ce paiement ne peut plus être réglé pour le moment.");
+}
+
+async function showSuccess(ctx, payData) {
+  render(`
+    <div class="checkout-state">
+      <i data-lucide="circle-check" aria-hidden="true" style="width:38px;height:38px;color:var(--success);margin-bottom:12px;"></i>
+      <h2>Paiement réussi</h2>
+      <p>${fmtAmount(payData.amount ?? ctx.amount, payData.currency || ctx.currency)} envoyés à ${escapeHtml(ctx.merchantName || "")}.</p>
+      <p class="muted" style="font-size:.82rem;margin-top:8px;">Débit et règlement effectués dans la même devise : ${escapeHtml(payData.currency || ctx.currency || "HTG")}.</p>
+      <p class="muted" style="font-size:.82rem;margin-top:10px;">Retour vers le marchand…</p>
+    </div>`);
+  await goReturnOrClose("success", ctx, "Paiement réussi. Vous pouvez fermer cette fenêtre.");
+}
+
+async function proceedAuthenticated(ctx) {
+  const registration = await hostedCheckoutService.registerCurrentDevice();
+  if (!registration.ok) {
+    showTemporaryError();
+    return;
+  }
+  if (registration.revoked) {
+    await authService.logout();
+    showLoginRequired(ctx);
+    return;
+  }
+
+  const authedResult = await hostedCheckoutService.fetchAuthenticatedContext(sessionToken);
+  if (!authedResult.ok) {
+    if (authedResult.errorCode === "authentication_required") { showLoginRequired(ctx); return; }
+    showTemporaryError(authedResult.error);
+    return;
+  }
+  const authedCtx = authedResult.data;
+
+  if (renderKnownServerState(authedCtx)) return;
+  if (!authedCtx.canPay) { showVerification(authedCtx); return; }
+
+  const prepared = await preparePayerContext(authedCtx);
+  if (prepared) showSummary(prepared);
+}
+
+async function start() {
+  if (!hostedCheckoutService.isValidSessionToken(sessionToken)) { showInvalidLink(); return; }
+
+  const publicResult = await hostedCheckoutService.fetchPublicContext(sessionToken);
+  if (!publicResult.ok) {
+    if (["checkout_not_found", "invalid_checkout_session"].includes(publicResult.errorCode)) { showInvalidLink(); return; }
+    showTemporaryError(publicResult.error);
+    return;
+  }
+  const ctx = publicResult.data;
+
+  if (renderKnownServerState(ctx)) return;
+  if (!ctx.canContinue) { showVerification(ctx); return; }
+
+  let session = null;
+  try { session = await getSession(); } catch { session = null; }
+
+  if (!session) { showLoginRequired(ctx); return; }
+
+  await proceedAuthenticated(ctx);
+}
+
+start();
+</script>
+</body></html>
