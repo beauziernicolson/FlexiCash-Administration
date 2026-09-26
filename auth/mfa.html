@@ -1,1 +1,309 @@
-<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Double authentification — FlexiCash</title><link rel="stylesheet" href="../assets/css/reset.css"><link rel="stylesheet" href="../assets/css/variables.css"><link rel="stylesheet" href="../assets/css/components.css"><link rel="stylesheet" href="../assets/css/auth.css"></head><body><main class="auth-panel"><div class="auth-card"><h1>Vérification MFA</h1><p class="muted">Certaines actions sensibles exigent un niveau d’assurance supplémentaire.</p><div class="field mt-16"><label>Code de vérification</label><input class="input" inputmode="numeric" autocomplete="one-time-code" maxlength="8"></div><button class="btn btn-primary btn-block mt-16" disabled>Vérifier</button></div></main></body></html>
+<!doctype html>
+<html lang="fr">
+<head>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Vérification à deux facteurs FlexiCash.">
+  <title>Double authentification — FlexiCash</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/css/reset.css">
+  <link rel="stylesheet" href="../assets/css/variables.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/auth.css">
+  <link rel="stylesheet" href="../assets/css/responsive.css">
+  <link rel="stylesheet" href="../assets/css/brand-green.css">
+  <script src="../assets/vendor/lucide/lucide-subset.js" defer></script>
+<link rel="stylesheet" href="../assets/css/ux-polish.css">
+</head>
+<body class="auth-body">
+  <main class="auth-shell">
+    <section class="auth-panel">
+      <div class="auth-card" style="max-width:560px">
+        <a class="brand brand-wordmark" href="../index.html" aria-label="FlexiCash"><span class="brand-flexi">Flexi</span><span class="brand-cash">Cash</span></a>
+        <div class="auth-heading">
+          <span class="chip">Sécurité renforcée</span>
+          <h1>Double authentification</h1>
+          <p id="mfa-subtitle">Vérification de votre session…</p>
+        </div>
+        <div id="mfa-content" aria-live="polite" aria-busy="true">
+          <div class="alert">Chargement de votre sécurité…</div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script type="module">
+    import "../assets/js/app.js";
+    import { getProfile, getSession, signOut } from "../assets/js/services/supabase-client.js";
+    import { redirectAfterAuth } from "../assets/js/services/auth-service.js";
+    import { mfaService } from "../assets/js/services/mfa-service.js";
+    import { toast, modal } from "../assets/js/components.js";
+
+    const content = document.getElementById("mfa-content");
+    const subtitle = document.getElementById("mfa-subtitle");
+    const params = new URLSearchParams(location.search);
+    const reason = params.get("reason") || "login";
+    const mode = params.get("mode") || "challenge";
+    const next = mfaService.safeRoute(params.get("next"));
+    let enrollment = null;
+    let failedAttempts = 0;
+
+    const esc = (value) => String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
+    const factorName = (factor) => factor.friendlyName || "Application Authenticator";
+    const reasonLabel = mfaService.reasonLabels[reason] || "Action sécurisée";
+
+    function setBusy(busy) {
+      content.setAttribute("aria-busy", String(Boolean(busy)));
+      content.querySelectorAll("button,input").forEach((element) => { element.disabled = Boolean(busy); });
+    }
+
+    async function finish(profile) {
+      if (profile?.role === "admin") {
+        const enabled = await mfaService.enableAdminEnforcement();
+        if (!enabled.ok) {
+          content.innerHTML = `<div class="alert alert-danger"><strong>Activation incomplète</strong><p class="mt-8">${esc(enabled.error)}</p></div>`;
+          return;
+        }
+      }
+      toast({ type: "success", title: "Vérification réussie", message: "Votre session est maintenant protégée." });
+      if (next) {
+        location.replace(`../${next}`);
+        return;
+      }
+      await redirectAfterAuth(profile);
+    }
+
+    function qrSource(qr) {
+      const value = String(qr || "");
+      if (value.startsWith("data:")) return value;
+      return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(value)}`;
+    }
+
+    async function removePendingEnrollment() {
+      if (!enrollment?.id) return;
+      try { await mfaService.discardUnverified(enrollment.id); } catch {}
+      enrollment = null;
+    }
+
+    function troubleshootingHtml(errorCode = "", canRestart = false) {
+      const networkHint = errorCode === "mfa_ip_address_mismatch"
+        ? "<li>Ne changez pas de Wi‑Fi, de connexion mobile ou de VPN entre le QR et la validation.</li>"
+        : "";
+      return `<div class="alert alert-warning" id="mfa-troubleshooting">
+        <strong>Le code est toujours refusé ?</strong>
+        <ul class="mt-8" style="padding-left:18px;display:grid;gap:6px">
+          <li>Sur le téléphone, activez <b>Date et heure automatiques</b> ainsi que le fuseau horaire automatique.</li>
+          <li>Attendez que le code change, puis saisissez immédiatement le nouveau code.</li>
+          <li>Utilisez l’entrée Google Authenticator créée avec le <b>dernier QR</b> affiché.</li>
+          ${networkHint}
+        </ul>
+        ${canRestart ? '<button class="btn btn-ghost full mt-12" type="button" id="restart-mfa-enrollment">Recommencer avec un nouveau QR</button>' : ''}
+      </div>`;
+    }
+
+    async function restartEnrollment(profile, fallbackStatus) {
+      setBusy(true);
+      try {
+        await removePendingEnrollment();
+        await mfaService.clearUnverifiedFactors();
+        failedAttempts = 0;
+        const refreshed = await mfaService.status();
+        renderEnrollment(profile, refreshed.ok ? refreshed.data : fallbackStatus);
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function renderEnrollment(profile, status, { backup = false } = {}) {
+      subtitle.textContent = profile.role === "admin"
+        ? "Un administrateur doit enregistrer une application Authenticator avant d’accéder à l’administration."
+        : `${reasonLabel} nécessite un deuxième facteur.`;
+      content.innerHTML = `
+        <div class="stack" style="--gap:16px">
+          <div class="alert alert-info"><strong>${backup ? "Ajouter un facteur de secours" : "Configurer votre application Authenticator"}</strong><p class="mt-8">Utilisez Google Authenticator, Microsoft Authenticator, Authy, 1Password ou le gestionnaire de mots de passe de votre téléphone.</p></div>
+          <label class="field"><span>Nom du facteur</span><input class="input" id="factor-name" maxlength="120" value="${backup ? "FlexiCash secours" : "FlexiCash principal"}"></label>
+          <button class="btn btn-primary full" id="start-enrollment">Générer le QR code</button>
+          ${status.verifiedFactors.length ? '<button class="btn btn-ghost full" id="cancel-backup">Retour</button>' : ''}
+          <p class="soft">FlexiCash ne reçoit jamais les codes générés à l’avance. Chaque code change toutes les 30 secondes.</p>
+        </div>`;
+      content.querySelector("#cancel-backup")?.addEventListener("click", () => renderManage(profile, status));
+      content.querySelector("#start-enrollment")?.addEventListener("click", async () => {
+        const button = content.querySelector("#start-enrollment");
+        button.disabled = true;
+        const result = await mfaService.enrollTotp(content.querySelector("#factor-name")?.value || "FlexiCash Authenticator");
+        button.disabled = false;
+        if (!result.ok) return toast({ type: "error", title: "Configuration impossible", message: result.error });
+        enrollment = result.data;
+        const totp = result.data?.totp || {};
+        content.innerHTML = `
+          <div class="stack" style="--gap:16px">
+            <div class="alert alert-warning"><strong>Ne partagez jamais ce secret</strong><p class="mt-8">Scannez le QR code, puis entrez le code à six chiffres affiché dans votre application.</p></div>
+            <div style="display:grid;place-items:center;padding:16px;background:#fff;border:1px solid var(--border);border-radius:16px">
+              <img src="${esc(qrSource(totp.qr_code))}" alt="QR code de configuration de la double authentification" style="width:min(260px,100%);height:auto">
+            </div>
+            <label class="field"><span>Secret manuel</span><div class="row gap-8"><input class="input" id="totp-secret" readonly value="${esc(totp.secret || "")}"><button type="button" class="btn btn-ghost" id="copy-secret">Copier</button></div></label>
+            <form id="verify-enrollment" class="stack" style="--gap:12px">
+              <label class="field"><span>Code à six chiffres</span><input class="input" id="enrollment-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required placeholder="000000"></label>
+              <button class="btn btn-primary full" type="submit">Activer la double authentification</button>
+              <button class="btn btn-ghost full" type="button" id="cancel-enrollment">Annuler</button>
+            </form>
+          </div>`;
+        content.querySelector("#copy-secret")?.addEventListener("click", async () => {
+          try { await navigator.clipboard.writeText(totp.secret || ""); toast({ type: "success", title: "Secret copié" }); } catch { toast({ type: "info", title: "Copie impossible", message: totp.secret || "" }); }
+        });
+        content.querySelector("#cancel-enrollment")?.addEventListener("click", async () => {
+          await removePendingEnrollment();
+          const refreshed = await mfaService.status();
+          if (refreshed.ok && refreshed.data.verifiedFactors.length) renderManage(profile, refreshed.data);
+          else renderEnrollment(profile, refreshed.ok ? refreshed.data : status);
+        });
+        content.querySelector("#verify-enrollment")?.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const submit = event.submitter;
+          submit.disabled = true;
+          const input = content.querySelector("#enrollment-code");
+          const verification = await mfaService.verify(enrollment.id, input?.value || "");
+          submit.disabled = false;
+          if (!verification.ok) {
+            failedAttempts += 1;
+            if (input) { input.value = ""; input.focus(); }
+            toast({ type: "error", title: "Code refusé", message: verification.error });
+            if (failedAttempts >= 2 || verification.errorCode === "mfa_ip_address_mismatch" || verification.errorCode === "mfa_factor_not_found") {
+              content.querySelector("#mfa-troubleshooting")?.remove();
+              content.querySelector("#verify-enrollment")?.insertAdjacentHTML("afterend", troubleshootingHtml(verification.errorCode, true));
+              content.querySelector("#restart-mfa-enrollment")?.addEventListener("click", () => restartEnrollment(profile, status));
+            }
+            return;
+          }
+          failedAttempts = 0;
+          enrollment = null;
+          const refreshed = await mfaService.status();
+          if (mode === "manage" || backup) renderManage(profile, refreshed.ok ? refreshed.data : status);
+          else await finish(profile);
+        });
+      });
+    }
+
+    function renderChallenge(profile, status) {
+      const factors = status.verifiedFactors;
+      subtitle.textContent = `${reasonLabel} : entrez le code de votre application Authenticator.`;
+      content.innerHTML = `
+        <form id="challenge-form" class="stack" style="--gap:16px">
+          ${factors.length > 1 ? `<label class="field"><span>Facteur</span><select class="select" id="challenge-factor">${factors.map((factor) => `<option value="${esc(factor.id)}">${esc(factorName(factor))}</option>`).join("")}</select></label>` : `<input type="hidden" id="challenge-factor" value="${esc(factors[0]?.id || "")}">`}
+          <label class="field"><span>Code à six chiffres</span><input class="input" id="challenge-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required autofocus placeholder="000000"></label>
+          <button class="btn btn-primary full" type="submit">Vérifier et continuer</button>
+          <button class="btn btn-ghost full" type="button" id="mfa-signout">Utiliser un autre compte</button>
+          <p class="soft">Le code change régulièrement. Saisissez celui qui est actuellement affiché dans votre application.</p>
+        </form>`;
+      content.querySelector("#mfa-signout")?.addEventListener("click", async () => { await signOut(); location.replace("login.html"); });
+      content.querySelector("#challenge-form")?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const button = event.submitter;
+        button.disabled = true;
+        const input = content.querySelector("#challenge-code");
+        const result = await mfaService.verify(content.querySelector("#challenge-factor")?.value, input?.value || "");
+        button.disabled = false;
+        if (!result.ok) {
+          failedAttempts += 1;
+          if (input) { input.value = ""; input.focus(); }
+          toast({ type: "error", title: "Vérification refusée", message: result.error });
+          if (failedAttempts >= 2) {
+            content.querySelector("#mfa-troubleshooting")?.remove();
+            content.querySelector("#challenge-form")?.insertAdjacentHTML("beforeend", troubleshootingHtml(result.errorCode, false));
+          }
+          return;
+        }
+        failedAttempts = 0;
+        if (mode === "manage") {
+          const refreshed = await mfaService.status();
+          renderManage(profile, refreshed.ok ? refreshed.data : status);
+        } else await finish(profile);
+      });
+    }
+
+    function renderManage(profile, status) {
+      subtitle.textContent = "Gérez vos applications Authenticator et ajoutez un facteur de secours.";
+      const factors = status.verifiedFactors;
+      content.innerHTML = `
+        <div class="stack" style="--gap:16px">
+          <div class="alert alert-success"><strong>Double authentification active</strong><p class="mt-8">${factors.length} facteur${factors.length > 1 ? "s" : ""} vérifié${factors.length > 1 ? "s" : ""}.</p></div>
+          <div class="stack" style="--gap:10px">
+            ${factors.map((factor) => `<div class="card row between" style="padding:14px;gap:12px"><div><strong>${esc(factorName(factor))}</strong><p class="soft mt-4">Application Authenticator · vérifiée</p></div><button class="btn btn-danger sm" data-remove-factor="${esc(factor.id)}" ${profile.role === "admin" && factors.length === 1 ? "disabled title=\"Un administrateur doit conserver un facteur\"" : ""}>Supprimer</button></div>`).join("")}
+          </div>
+          <button class="btn btn-primary full" id="add-backup">Ajouter un facteur de secours</button>
+          <button class="btn btn-ghost full" id="finish-manage">Terminer</button>
+          ${profile.role === "admin" && factors.length === 1 ? '<div class="alert alert-warning"><strong>Facteur de secours recommandé</strong><p class="mt-8">FlexiCash ne génère pas encore de codes de récupération. Ajoutez un deuxième facteur sur un autre appareil.</p></div>' : ''}
+        </div>`;
+      content.querySelector("#add-backup")?.addEventListener("click", () => renderEnrollment(profile, status, { backup: true }));
+      content.querySelector("#finish-manage")?.addEventListener("click", () => next ? location.replace(`../${next}`) : location.replace(profile.role === "admin" ? "../admin/dashboard.html" : "../app/security.html"));
+      content.querySelectorAll("[data-remove-factor]").forEach((button) => button.addEventListener("click", async () => {
+        if (button.disabled) return;
+        const confirmed = await new Promise((resolve) => {
+          let settled = false;
+          const done = (value) => { if (!settled) { settled = true; resolve(value); } };
+          modal({
+            title: "Supprimer ce facteur ?",
+            body: "<p>Ce facteur ne pourra plus valider vos connexions ni vos opérations sensibles. Gardez-en toujours au moins un si la double authentification est exigée sur votre compte.</p>",
+            confirm: "Supprimer",
+            cancel: "Annuler",
+            onConfirm: () => { done(true); },
+            onCancel: () => done(false),
+          });
+        });
+        if (!confirmed) return;
+        button.disabled = true;
+        const result = await mfaService.unenroll(button.dataset.removeFactor);
+        button.disabled = false;
+        if (!result.ok) return toast({ type: "error", title: "Suppression impossible", message: result.error });
+        toast({ type: "success", title: "Facteur supprimé" });
+        const refreshed = await mfaService.status();
+        if (!refreshed.ok) return location.reload();
+        if (refreshed.data.currentLevel !== "aal2" && refreshed.data.verifiedFactors.length) renderChallenge(profile, refreshed.data);
+        else if (!refreshed.data.verifiedFactors.length) renderEnrollment(profile, refreshed.data);
+        else renderManage(profile, refreshed.data);
+      }));
+    }
+
+    async function bootstrap() {
+      const session = await getSession().catch(() => null);
+      if (!session) { location.replace(`login.html${next ? `?next=${encodeURIComponent(next)}` : ""}`); return; }
+      const profileResult = await getProfile();
+      const profile = profileResult.data;
+      if (!profile) {
+        content.innerHTML = '<div class="alert alert-danger">Votre profil FlexiCash est introuvable.</div>';
+        return;
+      }
+      const statusResult = await mfaService.status();
+      if (!statusResult.ok) {
+        content.innerHTML = `<div class="alert alert-danger"><strong>Vérification indisponible</strong><p class="mt-8">${esc(statusResult.error)}</p></div>`;
+        return;
+      }
+      const status = statusResult.data;
+      const forceFreshChallenge = mode === "fresh";
+      content.setAttribute("aria-busy", "false");
+      if (status.currentLevel === "aal2" && !forceFreshChallenge) {
+        if (profile.role === "admin") await mfaService.enableAdminEnforcement();
+        if (mode === "manage") renderManage(profile, status);
+        else await finish(profile);
+        return;
+      }
+      if (status.verifiedFactors.length) {
+        renderChallenge(profile, status);
+      } else {
+        if (status.unverifiedFactors.length) {
+          const cleanup = await mfaService.clearUnverifiedFactors();
+          if (!cleanup.ok) {
+            content.innerHTML = `<div class="alert alert-danger"><strong>Configuration MFA bloquée</strong><p class="mt-8">${esc(cleanup.error)}</p></div>`;
+            return;
+          }
+          const refreshed = await mfaService.status();
+          renderEnrollment(profile, refreshed.ok ? refreshed.data : status);
+        } else renderEnrollment(profile, status);
+      }
+    }
+
+    bootstrap();
+  </script>
+</body>
+</html>
