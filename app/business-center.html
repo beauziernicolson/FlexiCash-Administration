@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Gestion commerciale FlexiCash pour les profils professionnels.">
+  <title>Gestion Business — FlexiCash</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&family=JetBrains+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/css/reset.css">
+  <link rel="stylesheet" href="../assets/css/variables.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <link rel="stylesheet" href="../assets/css/client.css">
+  <link rel="stylesheet" href="../assets/css/responsive.css">
+  <link rel="stylesheet" href="../assets/css/brand-green.css">
+  <link rel="stylesheet" href="../assets/css/ux-polish.css">
+  <script src="../assets/vendor/lucide/lucide-subset.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <div id="sidebar-mount"></div>
+    <main class="app-main">
+      <div id="topbar-mount"></div>
+      <div class="page business-center-page" id="business-center-root" aria-live="polite" aria-busy="true">
+        <div class="page-head"><div><h1>Gestion Business</h1><p class="muted">Chargement de votre espace professionnel…</p></div></div>
+        <div class="card"><p class="muted">Préparation des ventes, clients, factures et indicateurs de votre profil professionnel.</p></div>
+      </div>
+      <div id="bottomnav"></div>
+    </main>
+  </div>
+  <noscript>JavaScript est nécessaire pour utiliser la Gestion Business FlexiCash.</noscript>
+  <script type="module">
+    import { initBusinessCenter } from "../assets/js/pages/business-center-page.js";
+    initBusinessCenter();
+  </script>
+</body>
+</html>
