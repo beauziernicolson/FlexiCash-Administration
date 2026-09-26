@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="fr"><head>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Contact — FlexiCash</title>
+<meta name="description" content="Contactez l’équipe FlexiCash. Support disponible du lundi au samedi."/>
+<link rel="canonical" href="https://www.flexicash.biz/contact.html" />
+<meta name="theme-color" content="#086B3D" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="FlexiCash" />
+<meta property="og:locale" content="fr_HT" />
+<meta property="og:title" content="Contact — FlexiCash" />
+<meta property="og:description" content="Contactez l’équipe FlexiCash. Support disponible du lundi au samedi." />
+<meta property="og:url" content="https://www.flexicash.biz/contact.html" />
+<meta property="og:image" content="https://www.flexicash.biz/images/flexilogo.jpeg" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Contact — FlexiCash" />
+<meta name="twitter:description" content="Contactez l’équipe FlexiCash. Support disponible du lundi au samedi." />
+<meta name="twitter:image" content="https://www.flexicash.biz/images/flexilogo.jpeg" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/reset.css"><link rel="stylesheet" href="assets/css/variables.css">
+<link rel="stylesheet" href="assets/css/components.css"><link rel="stylesheet" href="assets/css/public.css">
+<link rel="stylesheet" href="assets/css/responsive.css">
+<link rel="stylesheet" href="assets/css/brand-green.css">
+<script src="assets/vendor/lucide/lucide-subset.js" defer></script>
+<link rel="stylesheet" href="assets/css/ux-polish.css">
+</head><body>
+<div id="header"></div>
+<section class="section">
+  <div class="container">
+    <span class="chip">Contact et assistance</span>
+    <h1 class="mt-16">Choisissez le bon chemin pour obtenir de l’aide.</h1>
+    <p class="lead">FlexiCash centralise les demandes dans des parcours sécurisés afin de protéger votre compte et votre historique.</p>
+    <div class="grid cols-3 mt-32 contact-choice-grid">
+      <article class="card contact-choice-card">
+        <span class="provider-mark provider-mark--generic"><i data-lucide="messages-square" aria-hidden="true"></i></span>
+        <h2>Vous êtes connecté</h2>
+        <p>Ouvrez un ticket depuis votre espace. Vous pourrez suivre les réponses et conserver l’historique de la demande.</p>
+        <a class="btn btn-primary mt-16" href="app/support.html">Ouvrir le support</a>
+      </article>
+      <article class="card contact-choice-card">
+        <span class="provider-mark provider-mark--generic"><i data-lucide="key-round" aria-hidden="true"></i></span>
+        <h2>Vous avez perdu l’accès</h2>
+        <p>Utilisez le parcours de récupération pour retrouver le même compte sans créer un nouveau portefeuille.</p>
+        <a class="btn btn-primary mt-16" href="auth/recover-access.html">Récupérer mon accès</a>
+      </article>
+      <article class="card contact-choice-card">
+        <span class="provider-mark provider-mark--generic"><i data-lucide="circle-help" aria-hidden="true"></i></span>
+        <h2>Vous avez une question générale</h2>
+        <p>Consultez les réponses sur l’inscription, les niveaux de portefeuille, les dépôts, les retraits, la sécurité et les profils.</p>
+        <a class="btn btn-ghost mt-16" href="help.html">Consulter le centre d’aide</a>
+      </article>
+    </div>
+    <div class="alert alert-info mt-32"><strong>Ne partagez jamais votre PIN ni vos codes de connexion.</strong> Une demande d’assistance légitime peut vérifier votre identité, mais ne doit jamais vous demander votre PIN complet.</div>
+  </div>
+</section>
+<div id="footer"></div>
+<script type="module">
+import { renderPublicHeader, renderPublicFooter, mount } from "./assets/js/components.js";
+import "./assets/js/app.js";
+mount("#header", renderPublicHeader(""));
+mount("#footer", renderPublicFooter());
+</script></body></html>
